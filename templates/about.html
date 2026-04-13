@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% set block_icon = 'fas fa-info-circle' %}
+{% block title %}حول النظام{% endblock %}
+{% block page_title %}حول النظام{% endblock %}
+{% block breadcrumb %}حول{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:520px;margin:2rem auto;text-align:center;">
+    <div class="card-body" style="padding:2.5rem 1.75rem;">
+        <div style="font-size:1.35rem;font-weight:800;margin-bottom:1.25rem;color:var(--accent);line-height:1.6;">
+            النظام المحاسبي الذكي ERP
+        </div>
+        <div style="font-size:0.95rem;line-height:2.1;color:var(--text);">
+            <div>برمجة : <strong>محمد ناصر عبدالله</strong></div>
+            <div>شركة : <strong>System Makers</strong></div>
+            <div>نظام : <strong>{{ settings.get('program_label', 'System Erp 2026') }}</strong></div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:2rem;">
+            <a href="https://wa.me/201103763082" target="_blank" rel="noopener noreferrer" class="btn btn-success">
+                <i class="fab fa-whatsapp"></i> تواصل واتساب
+            </a>
+            <a href="https://www.facebook.com/profile.php?id=100095476066188" target="_blank" rel="noopener noreferrer" class="btn btn-info">
+                <i class="fab fa-facebook-f"></i> صفحة فيسبوك
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
