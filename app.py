@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, send_file, has_request_context
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import joinedload
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
@@ -16,8 +16,10 @@ import threading
 import time as time_module
 from werkzeug.utils import secure_filename
 from sqlalchemy.engine.url import make_url
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _INSTANCE_DIR = os.path.join(_BASE_DIR, 'instance')
@@ -101,6 +103,9 @@ class User(UserMixin, db.Model):
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_seen = db.Column(db.DateTime, nullable=True)
+    last_ip = db.Column(db.String(64), nullable=True)
+    last_device = db.Column(db.String(255), nullable=True)
+    session_version = db.Column(db.Integer, default=1, nullable=False)
     permissions = db.Column(db.Text)  # JSON list of permission keys; empty = استخدام صلاحيات الدور
 
     def set_password(self, password):
@@ -422,6 +427,9 @@ class LicenseUsedSerial(db.Model):
     plan = db.Column(db.String(32))
     activated_at = db.Column(db.DateTime, default=datetime.utcnow)
     expires_at = db.Column(db.DateTime, nullable=True)
+    device_identifier = db.Column(db.String(255), nullable=True)
+    device_name = db.Column(db.String(255), nullable=True)
+    device_ip = db.Column(db.String(64), nullable=True)
 
 # ===== HELPERS =====
 @login_manager.user_loader
@@ -461,6 +469,7 @@ PERMISSION_KEYS = [
     ('users', 'المستخدمون'),
     ('connected_users', 'المتصلون'),
     ('delete_users', 'حذف مستخدمين'),
+    ('sales_purchases_delete', 'حذف فواتير المبيعات والمشتريات'),
     ('record_delete', 'حذف السجلات (عملاء، موردين، أصناف، مصاريف، …)'),
     ('backup', 'النسخ الاحتياطي'),
     ('warehouse_purge', 'حذف نهائي للمخزن (خطير)'),
@@ -476,6 +485,7 @@ DEFAULT_SETTINGS = {
     'app_subtitle': 'نظام إدارة أعمال ومحاسبة',
     'program_label': 'System Erp 2026',
     'layout_max_width': '1400px',
+    'ui_font_percent': '100',
     'license_expiry_message': 'انتهى اشتراكك. يرجى التواصل مع المورد لتجديد الترخيص.',
 }
 
@@ -506,7 +516,7 @@ def _perm_list_from_user(user):
 
 MANAGER_DEFAULT_DENIED = frozenset({
     'users', 'backup', 'settings_branding', 'settings_database', 'delete_users', 'transfer_approve',
-    'record_delete',
+    'record_delete', 'sales_purchases_delete',
 })
 
 
@@ -557,6 +567,17 @@ def user_can_delete_users_account(user) -> bool:
         return 'delete_users' in custom
     if getattr(user, 'role', None) == 'admin':
         return True
+    return False
+
+
+def user_can_delete_sales_purchases(user) -> bool:
+    if not user or not user.is_authenticated:
+        return False
+    if getattr(user, 'role', None) in ('developer', 'admin'):
+        return True
+    custom = _perm_list_from_user(user)
+    if custom is not None:
+        return 'sales_purchases_delete' in custom
     return False
 
 
@@ -746,7 +767,7 @@ def resolve_sqlite_main_path():
 def _prune_old_backups(keep=25):
     try:
         files = sorted(
-            [os.path.join(BACKUPS_DIR, f) for f in os.listdir(BACKUPS_DIR) if f.endswith('.db')],
+            [os.path.join(BACKUPS_DIR, f) for f in os.listdir(BACKUPS_DIR) if f.endswith('.db') or f.endswith('.json')],
             key=os.path.getmtime,
             reverse=True,
         )
@@ -768,6 +789,32 @@ def sqlite_backup_to_folder(tag='manual'):
     shutil.copy2(src, dest)
     _prune_old_backups(25)
     return dest
+
+
+def generic_snapshot_to_folder(tag='manual'):
+    try:
+        import json as _json
+        from sqlalchemy import MetaData, select
+        payload = {
+            'kind': 'erp_generic_snapshot',
+            'driver': make_url(app.config.get('SQLALCHEMY_DATABASE_URI', '')).drivername,
+            'exported_at': datetime.utcnow().isoformat(),
+            'tables': {},
+        }
+        md = MetaData()
+        md.reflect(bind=db.engine)
+        with db.engine.connect() as conn:
+            for t in md.sorted_tables:
+                rows = conn.execute(select(t)).mappings().all()
+                payload['tables'][t.name] = [dict(r) for r in rows]
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        dest = os.path.join(BACKUPS_DIR, f'erp_{tag}_{ts}.json')
+        with open(dest, 'w', encoding='utf-8') as f:
+            _json.dump(payload, f, ensure_ascii=False, default=str, indent=2)
+        _prune_old_backups(25)
+        return dest
+    except Exception:
+        return None
 
 
 def warehouse_has_operations(wh_id):
@@ -852,6 +899,34 @@ def ensure_schema():
                 utbl = '"user"' if insp.bind.dialect.name == 'postgresql' else 'user'
                 with db.engine.begin() as conn:
                     conn.execute(text(f'ALTER TABLE {utbl} ADD COLUMN last_seen {ls_sql}'))
+            if 'last_ip' not in ucols:
+                utbl = '"user"' if insp.bind.dialect.name == 'postgresql' else 'user'
+                with db.engine.begin() as conn:
+                    conn.execute(text(f'ALTER TABLE {utbl} ADD COLUMN last_ip VARCHAR(64)'))
+            if 'last_device' not in ucols:
+                utbl = '"user"' if insp.bind.dialect.name == 'postgresql' else 'user'
+                with db.engine.begin() as conn:
+                    conn.execute(text(f'ALTER TABLE {utbl} ADD COLUMN last_device VARCHAR(255)'))
+            if 'session_version' not in ucols:
+                utbl = '"user"' if insp.bind.dialect.name == 'postgresql' else 'user'
+                with db.engine.begin() as conn:
+                    conn.execute(text(f'ALTER TABLE {utbl} ADD COLUMN session_version INTEGER DEFAULT 1'))
+        try:
+            used_engine = db.engines.get('license_used') if hasattr(db, 'engines') else db.get_engine(bind='license_used')
+            if used_engine is not None:
+                uinsp = inspect(used_engine)
+                utables = uinsp.get_table_names()
+                if 'used_serial' in utables:
+                    ucols = {c['name'] for c in uinsp.get_columns('used_serial')}
+                    with used_engine.begin() as conn:
+                        if 'device_identifier' not in ucols:
+                            conn.execute(text('ALTER TABLE used_serial ADD COLUMN device_identifier VARCHAR(255)'))
+                        if 'device_name' not in ucols:
+                            conn.execute(text('ALTER TABLE used_serial ADD COLUMN device_name VARCHAR(255)'))
+                        if 'device_ip' not in ucols:
+                            conn.execute(text('ALTER TABLE used_serial ADD COLUMN device_ip VARCHAR(64)'))
+        except Exception:
+            pass
         try:
             db.create_all()
         except Exception:
@@ -867,6 +942,175 @@ def normalize_license_serial(raw):
 def license_serial_hash(code_norm):
     pepper = app.config.get('SECRET_KEY', '')
     return hashlib.sha256((code_norm + '|' + pepper).encode('utf-8')).hexdigest()
+
+
+def _current_device_fingerprint():
+    if not has_request_context():
+        return None
+    did = (request.cookies.get('erp_device_id') or '').strip()
+    if did:
+        return hashlib.sha256(('did|' + did).encode('utf-8')).hexdigest()
+    ip = (
+        (request.headers.get('CF-Connecting-IP') or '').strip()
+        or (request.headers.get('True-Client-IP') or '').strip()
+        or (request.headers.get('X-Real-IP') or '').strip()
+        or (request.headers.get('X-Forwarded-For') or '').strip().split(',')[0].strip()
+        or (request.remote_addr or '').strip()
+    )
+    ua = (request.user_agent.string or '').strip()
+    if not ip and not ua:
+        return None
+    return hashlib.sha256((ip + '|' + ua).encode('utf-8')).hexdigest()
+
+
+def _current_client_ip():
+    if not has_request_context():
+        return None
+    for hk in ('CF-Connecting-IP', 'True-Client-IP', 'X-Real-IP', 'X-Forwarded-For'):
+        raw = (request.headers.get(hk) or '').strip()
+        if raw:
+            return raw.split(',')[0].strip()[:64]
+    return (request.remote_addr or '').strip()[:64] or None
+
+
+def _current_client_device():
+    if not has_request_context():
+        return None
+    c_name = (request.cookies.get('erp_device_name') or '').strip()
+    if c_name:
+        return c_name[:255]
+    explicit = (request.headers.get('X-Device-Name') or request.headers.get('X-Computer-Name') or '').strip()
+    if explicit:
+        return explicit[:255]
+    ua = (request.user_agent.string or '').strip()
+    return ua[:255] if ua else None
+
+
+def _current_device_identifier():
+    """
+    معرّف الجهاز المعتمد للربط بالسريال:
+    - يُفضّل erp_device_id (ثابت نسبيًا على نفس المتصفح/الجهاز)
+    - fallback على بصمة من IP+UA عند غياب cookie
+    """
+    if not has_request_context():
+        return None
+    did = (request.cookies.get('erp_device_id') or '').strip()
+    if did:
+        return f'did:{did[:200]}'
+    fp = _current_device_fingerprint()
+    if fp:
+        return f'fp:{fp}'
+    return None
+
+
+def _get_setting_value(key: str) -> str:
+    row = AppSetting.query.filter_by(key=key).first()
+    return (row.value or '').strip() if row else ''
+
+
+def _set_setting_value(key: str, value: str):
+    row = AppSetting.query.filter_by(key=key).first()
+    if not row:
+        row = AppSetting(key=key)
+        db.session.add(row)
+    row.value = (value or '').strip()
+
+
+def _user_layout_key(user_id: int) -> str:
+    return f'user_{int(user_id)}_layout_max_width'
+
+
+def get_user_layout_max_width(user):
+    if not user or not getattr(user, 'is_authenticated', False):
+        return ''
+    row = AppSetting.query.filter_by(key=_user_layout_key(user.id)).first()
+    return (row.value or '').strip() if row else ''
+
+
+def set_user_layout_max_width(user, value: str):
+    if not user or not getattr(user, 'is_authenticated', False):
+        return
+    v = (value or '').strip()[:20]
+    row = AppSetting.query.filter_by(key=_user_layout_key(user.id)).first()
+    if not row:
+        row = AppSetting(key=_user_layout_key(user.id))
+        db.session.add(row)
+    row.value = v
+
+
+def _resolve_bound_device_identifier() -> str:
+    """
+    يحاول جلب معرّف الجهاز المرتبط بالاشتراك الحالي.
+    - أولاً من AppSetting المباشر.
+    - إن كان فارغاً (تفعيلات قديمة)، يحاول استعادته من السريال المستخدم.
+    """
+    bound_dev = _get_setting_value('installation_license_device_identifier')
+    if bound_dev:
+        return bound_dev
+    serial_hash = _get_setting_value('installation_license_serial_hash')
+    if not serial_hash:
+        return ''
+    used = LicenseUsedSerial.query.filter_by(code_hash=serial_hash).first()
+    if used:
+        # قاعدة سريالات قديمة: اربط سجل السيريال الحالي بمعرف الجهاز الفعلي أول مرة بعد التحديث.
+        if not (used.device_identifier or '').strip():
+            cur = (_current_device_identifier() or '').strip()
+            if cur:
+                used.device_identifier = cur
+                used.device_name = _current_client_device()
+                used.device_ip = _current_client_ip()
+                try:
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+        if (used.device_identifier or '').strip():
+            recovered = (used.device_identifier or '').strip()
+            try:
+                _set_setting_value('installation_license_device_identifier', recovered)
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            return recovered
+    return ''
+
+
+def is_known_connected_device():
+    """
+    يعتبر الجهاز معروفًا إذا كان (IP + اسم الجهاز) موجودين مسبقًا في صفحة المتصلين.
+    إذا لم توجد أي بصمات سابقة، نسمح مؤقتًا حتى لا نغلق النظام على أول تشغيل.
+    """
+    ip = _current_client_ip()
+    dev = _current_client_device()
+    if not ip or not dev:
+        return True
+    known_exists = User.query.filter(
+        User.last_ip.isnot(None),
+        User.last_device.isnot(None),
+        User.last_ip != '',
+        User.last_device != '',
+    ).first() is not None
+    if not known_exists:
+        return True
+    pair_exists = User.query.filter_by(last_ip=ip, last_device=dev).first() is not None
+    return pair_exists
+
+
+def mark_current_device_connected_for_user(user):
+    if not user or not getattr(user, 'id', None):
+        return
+    ip = _current_client_ip()
+    dev = _current_client_device()
+    if not ip and not dev:
+        return
+    try:
+        User.query.filter_by(id=user.id).update({
+            'last_seen': datetime.utcnow(),
+            'last_ip': ip,
+            'last_device': dev,
+        })
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def _parse_license_expiry(val):
@@ -895,7 +1139,7 @@ def installation_license_valid():
     return datetime.utcnow() < dt
 
 
-def set_installation_license(permanent, expires_at):
+def set_installation_license(permanent, expires_at, serial_hash=None, device_identifier=None):
     def _set(k, v):
         row = AppSetting.query.filter_by(key=k).first()
         if not row:
@@ -907,6 +1151,10 @@ def set_installation_license(permanent, expires_at):
         _set('installation_license_expires', '')
     else:
         _set('installation_license_expires', expires_at.strftime('%Y-%m-%d %H:%M:%S') if expires_at else '')
+    # أبقِ البصمة فارغة لأن السماح للأجهزة أصبح عبر (IP + اسم الجهاز) من المتصلين.
+    _set('installation_license_device_fp', '')
+    _set('installation_license_serial_hash', (serial_hash or '').strip())
+    _set('installation_license_device_identifier', (device_identifier or '').strip())
 
 
 def subscription_status_for_ui():
@@ -916,6 +1164,9 @@ def subscription_status_for_ui():
     lic_msg = (gs.get('license_expiry_message') or DEFAULT_SETTINGS.get('license_expiry_message', '') or '').strip()
     if getattr(current_user, 'role', None) == 'developer':
         return {'kind': 'developer', 'line': 'مفعّل — مطوّر', 'client_message': lic_msg}
+    # نفس منطق التفعيل الفعلي لمنع تضارب "مفعّل" مع صفحة طلب السيريال.
+    if not installation_license_valid():
+        return {'kind': 'expired', 'line': 'يتطلب تفعيل', 'client_message': lic_msg}
     if gs.get('installation_license_permanent') == '1':
         return {'kind': 'permanent', 'line': 'ترخيص دائم', 'client_message': lic_msg}
     dt = _parse_license_expiry(gs.get('installation_license_expires'))
@@ -1062,7 +1313,11 @@ def _maybe_bump_last_seen():
         if now - last < 50:
             return
         session['_ls_bump_at'] = now
-        User.query.filter_by(id=current_user.id).update({'last_seen': datetime.utcnow()})
+        User.query.filter_by(id=current_user.id).update({
+            'last_seen': datetime.utcnow(),
+            'last_ip': _current_client_ip(),
+            'last_device': _current_client_device(),
+        })
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -1081,6 +1336,7 @@ def inject_globals():
         app_company=gs.get('company_name', DEFAULT_SETTINGS['company_name']),
         app_subtitle_brand=gs.get('app_subtitle', DEFAULT_SETTINGS['app_subtitle']),
         layout_max_width=gs.get('layout_max_width', '1400px'),
+        user_layout_max_width=get_user_layout_max_width(current_user) if current_user.is_authenticated else '',
         can=can, PERMISSION_KEYS=PERMISSION_KEYS,
         permission_keys_edit=permission_keys_for_editor(current_user) if current_user.is_authenticated else [x for x in PERMISSION_KEYS if x[0] not in DEVELOPER_ONLY_PERMS],
         subscription_status=subscription_status_for_ui() if current_user.is_authenticated else None,
@@ -1120,15 +1376,24 @@ def enforce_route_permissions():
             ensure_schema()
         except Exception:
             pass
-    if request.endpoint == 'static' or request.endpoint == 'login':
+    if request.endpoint in ('static', 'login', 'logout'):
         return
     if not current_user.is_authenticated:
         return
-    _maybe_bump_last_seen()
+    db_sv = int(getattr(current_user, 'session_version', 1) or 1)
+    ss_sv = int(session.get('sv') or 0)
+    if ss_sv != db_sv:
+        logout_user()
+        session.clear()
+        if (request.path or '').startswith('/api'):
+            return jsonify({'ok': False, 'forced_logout': True, 'message': 'تم تسجيل خروجك من قبل الإدارة'}), 401
+        flash('تم تسجيل خروجك من قبل الإدارة', 'warning')
+        return redirect(url_for('login'))
     ep = request.endpoint or ''
     if getattr(current_user, 'role', None) != 'developer':
         if not installation_license_valid() and ep != 'license_activate':
             return redirect(url_for('license_activate'))
+    _maybe_bump_last_seen()
     if getattr(current_user, 'role', None) == 'developer':
         return
     p = request.path or ''
@@ -1154,7 +1419,14 @@ def login():
         user = User.query.filter_by(username=request.form['username']).first()
         if user and user.check_password(request.form['password']) and user.is_active:
             login_user(user)
-            return redirect(safe_home_url_for(user))
+            session['sv'] = int(user.session_version or 1)
+            resp = redirect(safe_home_url_for(user))
+            dev_id = (request.form.get('device_id') or request.cookies.get('erp_device_id') or '').strip()[:200]
+            if not dev_id:
+                dev_id = ('dev-' + secrets.token_hex(12))[:200]
+            if dev_id:
+                resp.set_cookie('erp_device_id', dev_id, max_age=31536000, samesite='Lax')
+            return resp
         flash('اسم المستخدم أو كلمة المرور غير صحيحة', 'error')
     return render_template('login.html')
 
@@ -1162,7 +1434,14 @@ def login():
 @login_required
 def logout():
     logout_user()
+    session.clear()
     return redirect(url_for('login'))
+
+
+@app.route('/api/session/ping')
+@login_required
+def api_session_ping():
+    return jsonify({'ok': True})
 
 
 @app.route('/license/activate', methods=['GET', 'POST'])
@@ -1170,7 +1449,8 @@ def logout():
 def license_activate():
     if getattr(current_user, 'role', None) == 'developer':
         return redirect(safe_home_url_for(current_user))
-    if installation_license_valid():
+    reason = (request.args.get('reason') or '').strip()
+    if installation_license_valid() and reason != 'new_device':
         return redirect(safe_home_url_for(current_user))
     if request.method == 'POST':
         raw = (request.form.get('serial') or '').strip()
@@ -1189,15 +1469,23 @@ def license_activate():
         plan = pool.plan or 'one_year'
         custom_days = pool.custom_days
         exp, perm = expires_for_serial_plan(plan, custom_days)
+        dev_ident = _current_device_identifier()
+        dev_name = _current_client_device()
+        dev_ip = _current_client_ip()
         db.session.delete(pool)
         db.session.add(LicenseUsedSerial(
             code_hash=h,
             code_hint=norm[-10:] if len(norm) >= 10 else norm,
             plan=plan,
             expires_at=exp,
+            device_identifier=dev_ident,
+            device_name=dev_name,
+            device_ip=dev_ip,
         ))
-        set_installation_license(perm, exp)
+        set_installation_license(perm, exp, serial_hash=h, device_identifier=dev_ident)
         db.session.commit()
+        # بعد التفعيل: سجّل الجهاز الحالي ليظهر ضمن "المتصلون" كمصدر موثوق.
+        mark_current_device_connected_for_user(current_user)
         flash('تم تفعيل الترخيص بنجاح', 'success')
         return redirect(safe_home_url_for(current_user))
     return render_template('license_activate.html')
@@ -1257,6 +1545,28 @@ def license_admin_save_message():
     row.value = msg[:4000]
     db.session.commit()
     flash('تم حفظ رسالة انتهاء الاشتراك للعميل', 'success')
+    return redirect(url_for('license_admin'))
+
+
+@app.route('/license/admin/end-subscription', methods=['POST'])
+@login_required
+@developer_required
+def license_admin_end_subscription():
+    keys = [
+        'installation_license_permanent',
+        'installation_license_expires',
+        'installation_license_device_fp',
+        'installation_license_serial_hash',
+        'installation_license_device_identifier',
+    ]
+    for k in keys:
+        row = AppSetting.query.filter_by(key=k).first()
+        if not row:
+            row = AppSetting(key=k)
+            db.session.add(row)
+        row.value = ''
+    db.session.commit()
+    flash('تم إنهاء الاشتراك الحالي. سيُطلب سريال جديد عند فتح النظام.', 'warning')
     return redirect(url_for('license_admin'))
 
 
@@ -1608,6 +1918,38 @@ def sale_detail(id):
     sale_has_return = SaleReturn.query.filter_by(sale_id=sale.id).first() is not None
     return render_template('sale_detail.html', sale=sale, sale_has_return=sale_has_return)
 
+
+@app.route('/sales/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_sale(id):
+    if not user_can_delete_sales_purchases(current_user):
+        flash('ليس لديك صلاحية حذف فواتير المبيعات. يمكن لمدير النظام منحها يدويًا من صلاحيات المستخدم.', 'error')
+        return redirect(url_for('sales'))
+    sale = Sale.query.options(joinedload(Sale.items)).get_or_404(id)
+    if SaleReturn.query.filter_by(sale_id=sale.id).first():
+        flash('لا يمكن حذف الفاتورة لوجود مرتجع مرتبط بها. احذف المرتجع أولاً.', 'error')
+        return redirect(url_for('sale_detail', id=sale.id))
+    try:
+        for item in sale.items:
+            stock = Stock.query.filter_by(product_id=item.product_id, warehouse_id=sale.warehouse_id).first()
+            if stock:
+                stock.quantity += float(item.quantity or 0)
+            else:
+                db.session.add(Stock(product_id=item.product_id, warehouse_id=sale.warehouse_id, quantity=float(item.quantity or 0)))
+        if sale.customer_id and float(sale.remaining or 0) > 0:
+            customer = Customer.query.get(sale.customer_id)
+            if customer:
+                customer.balance -= float(sale.remaining or 0)
+        inv = sale.invoice_number
+        db.session.delete(sale)
+        db.session.commit()
+        flash(f'تم حذف فاتورة المبيعات {inv} بنجاح', 'success')
+    except Exception:
+        db.session.rollback()
+        flash('حدث خطأ أثناء حذف فاتورة المبيعات', 'error')
+    return redirect(url_for('sales'))
+
+
 # ===== PURCHASES =====
 @app.route('/purchases')
 @login_required
@@ -1626,7 +1968,22 @@ def new_purchase():
         product_ids = request.form.getlist('product_id[]')
         quantities = request.form.getlist('quantity[]')
         prices = request.form.getlist('price[]')
-        
+        valid_lines = 0
+        for i, pid in enumerate(product_ids):
+            qty = float((quantities[i] if i < len(quantities) else '0') or 0)
+            price = float((prices[i] if i < len(prices) else '0') or 0)
+            if pid:
+                if qty <= 0 or price < 0:
+                    flash('الكمية يجب أن تكون أكبر من صفر والسعر لا يكون سالباً', 'error')
+                    return redirect(url_for('new_purchase'))
+                valid_lines += 1
+            elif qty > 0 or price > 0:
+                flash('لا يمكن حفظ فاتورة شراء بسطر بدون اختيار الصنف', 'error')
+                return redirect(url_for('new_purchase'))
+        if valid_lines == 0:
+            flash('الصنف عنصر أساسي: أضف صنفاً واحداً على الأقل قبل الحفظ', 'error')
+            return redirect(url_for('new_purchase'))
+
         purchase = Purchase(
             invoice_number=get_next_number('PUR', Purchase, 'invoice_number'),
             supplier_id=supplier_id,
@@ -1678,6 +2035,44 @@ def purchase_detail(id):
     purchase = Purchase.query.get_or_404(id)
     purchase_has_return = PurchaseReturn.query.filter_by(purchase_id=purchase.id).first() is not None
     return render_template('purchase_detail.html', purchase=purchase, purchase_has_return=purchase_has_return)
+
+
+@app.route('/purchases/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_purchase(id):
+    if not user_can_delete_sales_purchases(current_user):
+        flash('ليس لديك صلاحية حذف فواتير المشتريات. يمكن لمدير النظام منحها يدويًا من صلاحيات المستخدم.', 'error')
+        return redirect(url_for('purchases'))
+    purchase = Purchase.query.options(joinedload(Purchase.items)).get_or_404(id)
+    if PurchaseReturn.query.filter_by(purchase_id=purchase.id).first():
+        flash('لا يمكن حذف الفاتورة لوجود مرتجع مرتبط بها. احذف المرتجع أولاً.', 'error')
+        return redirect(url_for('purchase_detail', id=purchase.id))
+    for item in purchase.items:
+        stock = Stock.query.filter_by(product_id=item.product_id, warehouse_id=purchase.warehouse_id).first()
+        available = float(stock.quantity) if stock else 0.0
+        qty = float(item.quantity or 0)
+        if available + 1e-9 < qty:
+            pname = item.product.name if item.product else str(item.product_id)
+            flash(f'لا يمكن حذف الفاتورة لأن رصيد الصنف «{pname}» بالمخزن غير كافٍ لعكس العملية.', 'error')
+            return redirect(url_for('purchase_detail', id=purchase.id))
+    try:
+        for item in purchase.items:
+            stock = Stock.query.filter_by(product_id=item.product_id, warehouse_id=purchase.warehouse_id).first()
+            if stock:
+                stock.quantity -= float(item.quantity or 0)
+        if purchase.supplier_id and float(purchase.remaining or 0) > 0:
+            supplier = Supplier.query.get(purchase.supplier_id)
+            if supplier:
+                supplier.balance -= float(purchase.remaining or 0)
+        inv = purchase.invoice_number
+        db.session.delete(purchase)
+        db.session.commit()
+        flash(f'تم حذف فاتورة المشتريات {inv} بنجاح', 'success')
+    except Exception:
+        db.session.rollback()
+        flash('حدث خطأ أثناء حذف فاتورة المشتريات', 'error')
+    return redirect(url_for('purchases'))
+
 
 # ===== RETURNS =====
 @app.route('/returns/sale')
@@ -2251,6 +2646,16 @@ def app_settings():
             val = request.form.get(key)
             if val is None:
                 continue
+            if key == 'ui_font_percent':
+                raw = ''.join(ch for ch in (val or '') if ch.isdigit())
+                try:
+                    n = int(raw or '100')
+                except Exception:
+                    n = 100
+                n = max(10, min(100, n))
+                if n % 10 != 0:
+                    n = int(round(n / 10.0) * 10)
+                val = str(n)
             storage_key = f'br{bid}_{key}' if bid else key
             row = AppSetting.query.filter_by(key=storage_key).first()
             if not row:
@@ -2323,6 +2728,7 @@ def database_admin():
         main_sqlite=main_sqlite,
         custom_path=custom_path,
         is_sqlite=main_sqlite is not None,
+        db_driver=(make_url(app.config.get('SQLALCHEMY_DATABASE_URI', '')).drivername or 'unknown'),
         backup_files=backup_files,
         settings=gs,
     )
@@ -2333,15 +2739,23 @@ def database_admin():
 @admin_required
 def database_export():
     p = resolve_sqlite_main_path()
-    if not p or not os.path.isfile(p):
-        flash('التصدير متاح فقط عند استخدام ملف SQLite', 'error')
+    if p and os.path.isfile(p):
+        sqlite_backup_to_folder('before_export')
+        return send_file(
+            p,
+            as_attachment=True,
+            download_name=f'erp_backup_{datetime.now().strftime("%Y%m%d_%H%M")}.db',
+            mimetype='application/octet-stream',
+        )
+    out = generic_snapshot_to_folder('before_export')
+    if not out or not os.path.isfile(out):
+        flash('تعذّر التصدير لقاعدة البيانات الحالية', 'error')
         return redirect(url_for('database_admin'))
-    sqlite_backup_to_folder('before_export')
     return send_file(
-        p,
+        out,
         as_attachment=True,
-        download_name=f'erp_backup_{datetime.now().strftime("%Y%m%d_%H%M")}.db',
-        mimetype='application/octet-stream',
+        download_name=f'erp_backup_{datetime.now().strftime("%Y%m%d_%H%M")}.json',
+        mimetype='application/json',
     )
 
 
@@ -2349,11 +2763,11 @@ def database_export():
 @login_required
 @admin_required
 def database_backup_now():
-    out = sqlite_backup_to_folder('manual')
+    out = sqlite_backup_to_folder('manual') or generic_snapshot_to_folder('manual')
     if out:
         flash(f'تم إنشاء نسخة احتياطية: {os.path.basename(out)}', 'success')
     else:
-        flash('تعذّر النسخ الاحتياطي (تحقق من نوع قاعدة البيانات)', 'error')
+        flash('تعذّر النسخ الاحتياطي', 'error')
     return redirect(url_for('database_admin'))
 
 
@@ -2391,33 +2805,56 @@ def database_save_path():
 @admin_required
 def database_import():
     dest_main = resolve_sqlite_main_path()
-    if not dest_main:
-        flash('الاستيراد متاح فقط مع SQLite', 'error')
-        return redirect(url_for('database_admin'))
     f = request.files.get('file')
     if not f or not f.filename:
-        flash('اختر ملف .db', 'error')
+        flash('اختر ملف استيراد', 'error')
         return redirect(url_for('database_admin'))
     fn = secure_filename(f.filename)
-    if not fn.lower().endswith('.db'):
-        flash('امتداد الملف يجب أن يكون .db', 'error')
-        return redirect(url_for('database_admin'))
-    sqlite_backup_to_folder('before_import')
-    tmp = os.path.join(_INSTANCE_DIR, '_import_upload.db')
-    try:
-        f.save(tmp)
-        db.session.remove()
-        db.engine.dispose()
-        shutil.copy2(tmp, dest_main)
-        flash('تم استبدال ملف قاعدة البيانات. يُنصح بإعادة تشغيل التطبيق ثم تحديث الصفحة.', 'success')
-    except Exception as e:
-        flash(f'فشل الاستيراد: {e}', 'error')
-    finally:
-        if os.path.isfile(tmp):
-            try:
-                os.remove(tmp)
-            except OSError:
-                pass
+    if dest_main:
+        if not fn.lower().endswith('.db'):
+            flash('امتداد الملف يجب أن يكون .db', 'error')
+            return redirect(url_for('database_admin'))
+        sqlite_backup_to_folder('before_import')
+        tmp = os.path.join(_INSTANCE_DIR, '_import_upload.db')
+        try:
+            f.save(tmp)
+            db.session.remove()
+            db.engine.dispose()
+            shutil.copy2(tmp, dest_main)
+            flash('تم استبدال ملف قاعدة البيانات. يُنصح بإعادة تشغيل التطبيق ثم تحديث الصفحة.', 'success')
+        except Exception as e:
+            flash(f'فشل الاستيراد: {e}', 'error')
+        finally:
+            if os.path.isfile(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+    else:
+        if not fn.lower().endswith('.json'):
+            flash('عند استخدام قاعدة غير SQLite يجب الاستيراد من ملف JSON', 'error')
+            return redirect(url_for('database_admin'))
+        try:
+            import json as _json
+            from sqlalchemy import MetaData
+            generic_snapshot_to_folder('before_import')
+            payload = _json.load(f.stream)
+            if payload.get('kind') != 'erp_generic_snapshot' or not isinstance(payload.get('tables'), dict):
+                flash('ملف الاستيراد غير مدعوم', 'error')
+                return redirect(url_for('database_admin'))
+            md = MetaData()
+            md.reflect(bind=db.engine)
+            with db.engine.begin() as conn:
+                for t in reversed(md.sorted_tables):
+                    if t.name in payload['tables']:
+                        conn.execute(t.delete())
+                for t in md.sorted_tables:
+                    rows = payload['tables'].get(t.name) or []
+                    if rows:
+                        conn.execute(t.insert(), rows)
+            flash('تم استيراد النسخة بنجاح', 'success')
+        except Exception as e:
+            flash(f'فشل الاستيراد: {e}', 'error')
     return redirect(url_for('database_admin'))
 
 
@@ -2660,6 +3097,22 @@ def connected_users_page():
     return render_template('connected_users.html', users_list=users_list, online_before=online_before)
 
 
+@app.route('/settings/connected-users/force-logout/<int:user_id>', methods=['POST'])
+@login_required
+def connected_users_force_logout(user_id):
+    if not user_can(current_user, 'connected_users'):
+        flash('لا صلاحية لتنفيذ هذا الإجراء', 'error')
+        return redirect(url_for('connected_users_page'))
+    target = User.query.get_or_404(user_id)
+    if target.role in ('admin', 'developer'):
+        flash('إخراج المستخدم مسموح فقط للمستخدمين العاديين والمشرفين', 'error')
+        return redirect(url_for('connected_users_page'))
+    target.session_version = int(getattr(target, 'session_version', 1) or 1) + 1
+    db.session.commit()
+    flash(f'تم إخراج المستخدم: {target.username}', 'success')
+    return redirect(url_for('connected_users_page'))
+
+
 @app.route('/inventory/memos')
 @login_required
 def inventory_memos_list():
@@ -2734,6 +3187,28 @@ def inventory_memo_receive():
         quantities = request.form.getlist('quantity[]')
         unit_notes = request.form.getlist('unit_note[]')
         notes = request.form.get('notes')
+        if not pref:
+            flash('رقم أمر/مرجع الإنتاج مطلوب قبل تسجيل الاستلام', 'error')
+            return redirect(url_for('inventory_memo_receive'))
+        # يكفي وجود أي صرف خامات مرتبط بنفس أمر الإنتاج، حتى لو تم الصرف من مخزن خامات مختلف
+        issue_q = InventoryMemo.query.filter_by(memo_type='issue_production', production_ref=pref)
+        if not issue_q.first():
+            flash('لا يمكن الاستلام قبل تسجيل إخراج مواد خام لأمر الإنتاج', 'error')
+            return redirect(url_for('inventory_memo_receive'))
+        valid_lines = 0
+        for i, pid in enumerate(product_ids):
+            qty = float((quantities[i] if i < len(quantities) else '0') or 0)
+            if pid:
+                if qty <= 0:
+                    flash('الكمية يجب أن تكون أكبر من صفر', 'error')
+                    return redirect(url_for('inventory_memo_receive'))
+                valid_lines += 1
+            elif qty > 0:
+                flash('لا يمكن حفظ سطر استلام بدون اختيار الصنف', 'error')
+                return redirect(url_for('inventory_memo_receive'))
+        if valid_lines == 0:
+            flash('يجب إدخال صنف واحد على الأقل في مذكّرة الاستلام', 'error')
+            return redirect(url_for('inventory_memo_receive'))
         memo = InventoryMemo(
             memo_number=get_next_number('MEM', InventoryMemo, 'memo_number'),
             memo_type='receive_production',
@@ -3034,6 +3509,28 @@ def api_dashboard_stats():
             db.func.date(Sale.date) == d).scalar() or 0
         sales_data.append({'date': d.strftime('%m/%d'), 'total': round(total, 2)})
     return jsonify({'daily_sales': sales_data})
+
+
+@app.route('/api/user/layout-width', methods=['POST'])
+@login_required
+def api_user_layout_width():
+    width = ''
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        width = (payload.get('width') or '').strip()
+    else:
+        width = (request.form.get('width') or '').strip()
+    if len(width) > 20:
+        width = width[:20]
+    if width and not re.match(r'^\d{2,4}px$|^100%$', width):
+        return jsonify({'ok': False, 'message': 'invalid width'}), 400
+    set_user_layout_max_width(current_user, width)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({'ok': False}), 500
+    return jsonify({'ok': True})
 
 @app.route('/inventory/adjust', methods=['GET', 'POST'])
 @login_required
