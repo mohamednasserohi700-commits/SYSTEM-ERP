@@ -37,13 +37,26 @@
             <div class="form-group">
                 <label class="form-label">عرض المحتوى — الافتراضي على السيرفر</label>
                 <select name="layout_max_width" class="form-control">
+                    <option value="430px" {{ 'selected' if settings.get('layout_max_width','1400px') == '430px' }}>430px — عرض الهاتف</option>
                     {% for w in ['100%', '1920px', '1600px', '1400px', '1200px', '1024px'] %}
                     <option value="{{ w }}" {{ 'selected' if settings.get('layout_max_width','1400px') == w }}>{{ w }} — عرض كامل أو محدود</option>
                     {% endfor %}
                 </select>
                 <small style="color:var(--text-muted);font-size:11px;display:block;margin-top:6px;">
                     <strong>كل جهاز له ضبطه الخاص:</strong> عرض الصفحة يُختار من الشريط العلوي (بجانب الوضع الفاتح/الداكن)، ويُحفظ في المتصفح على هذا الجهاز فقط — لا يرتبط بحساب المستخدم.
-                    القيمة هنا هي <strong>الافتراضي عند أول زيارة</strong> لأي جهاز لم يضبط عرضاً محلياً بعد. على الهاتف تُخفى أدوات العرض (العرض كامل تلقائياً).
+                    القيمة هنا هي <strong>الافتراضي عند أول زيارة</strong> لأي جهاز لم يضبط عرضاً محلياً بعد. يمكنك اختيار <strong>عرض الهاتف</strong> لمحاكاة شاشة الموبايل داخل الكمبيوتر.
+                </small>
+            </div>
+            <div class="form-group">
+                <label class="form-label">حجم الخط في الواجهة</label>
+                <select name="ui_font_percent" class="form-control">
+                    {% for p in range(10, 101, 10) %}
+                    {% set v = p|string %}
+                    <option value="{{ v }}" {{ 'selected' if settings.get('ui_font_percent','100') == v }}>{{ v }}%</option>
+                    {% endfor %}
+                </select>
+                <small style="color:var(--text-muted);font-size:11px;display:block;margin-top:6px;">
+                    يطبّق على نصوص الواجهة الأساسية مثل القائمة الجانبية والعناوين. القيمة الافتراضية 100%.
                 </small>
             </div>
             <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> حفظ</button>

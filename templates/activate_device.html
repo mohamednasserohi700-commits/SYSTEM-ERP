@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5, viewport-fit=cover">
+    <title>تفعيل الجهاز | {{ app_brand_title }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #1a1f2e;
+            --accent: #f59e0b;
+            --success: #10b981;
+            --danger: #ef4444;
+            --border: rgba(255,255,255,0.07);
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --bg-secondary: rgba(36,42,61,0.95);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            min-height: 100%;
+        }
+
+        body {
+            font-family: 'Cairo', sans-serif;
+            background: var(--primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text);
+            padding: 24px 16px 20px;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 70% 50% at 20% 20%, rgba(245,158,11,0.08) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 70% at 80% 80%, rgba(59,130,246,0.06) 0%, transparent 60%),
+                radial-gradient(ellipse 40% 40% at 60% 10%, rgba(16,185,129,0.04) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .grid-bg {
+            position: fixed;
+            inset: 0;
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 60px 60px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .activation-wrap {
+            width: 480px;
+            max-width: 100%;
+            position: relative;
+            z-index: 1;
+            flex: 0 0 auto;
+        }
+
+        .status-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .status-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, var(--accent), #e07b00);
+            border-radius: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            color: #1a1f2e;
+            font-weight: 900;
+            box-shadow: 0 0 50px rgba(245,158,11,0.35);
+            margin-bottom: 20px;
+            animation: pulse-glow 2s infinite;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 50px rgba(245,158,11,0.35); }
+            50% { box-shadow: 0 0 70px rgba(245,158,11,0.5); }
+        }
+
+        .status-title {
+            font-family: 'Tajawal', sans-serif;
+            font-size: clamp(1.5rem, 5vw, 2rem);
+            font-weight: 900;
+            letter-spacing: -0.5px;
+            line-height: 1.2;
+            margin-bottom: 8px;
+        }
+
+        .status-message {
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .activation-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px 28px;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+            margin-bottom: 24px;
+        }
+
+        .device-info {
+            background: rgba(59, 130, 246, 0.08);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 14px;
+            padding: 16px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .device-info-icon {
+            width: 40px;
+            height: 40px;
+            background: rgba(59, 130, 246, 0.2);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #60a5fa;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .device-info-text {
+            flex: 1;
+        }
+
+        .device-info-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+
+        .device-info-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+
+        .input-wrap {
+            position: relative;
+        }
+
+        .input-wrap i {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 16px;
+            pointer-events: none;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 14px 42px 14px 16px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text);
+            font-family: 'Cairo', monospace;
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .form-control::placeholder {
+            color: var(--text-muted);
+            letter-spacing: normal;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: rgba(245, 158, 11, 0.06);
+            box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-activate {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, var(--accent), #e07b00);
+            color: #1a1f2e;
+            border: none;
+            border-radius: 12px;
+            font-family: 'Cairo', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .btn-activate:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(245, 158, 11, 0.35);
+        }
+
+        .btn-activate:active {
+            transform: translateY(0);
+        }
+
+        .btn-back {
+            width: 100%;
+            padding: 12px;
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            font-family: 'Cairo', sans-serif;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .btn-back:hover {
+            color: var(--text);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .alert {
+            padding: 14px 16px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            line-height: 1.5;
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #f87171;
+        }
+
+        .alert-warning {
+            background: rgba(245, 158, 11, 0.12);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            color: #fbbf24;
+        }
+
+        .alert-success {
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #6ee7b7;
+        }
+
+        .alert i {
+            margin-top: 2px;
+            flex-shrink: 0;
+            font-size: 14px;
+        }
+
+        .instruction-box {
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #a7f3d0;
+        }
+
+        .instruction-box strong {
+            color: #6ee7b7;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .footer-note {
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            position: relative;
+            z-index: 1;
+            margin-top: 20px;
+        }
+
+        .security-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            color: #6ee7b7;
+            margin-bottom: 16px;
+        }
+
+        .security-badge i {
+            font-size: 12px;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 640px) {
+            .activation-wrap {
+                width: 100%;
+                padding: 0 12px;
+            }
+
+            .activation-card {
+                padding: 24px 20px;
+                border-radius: 16px;
+            }
+
+            .status-header {
+                margin-bottom: 24px;
+            }
+
+            .status-icon {
+                width: 70px;
+                height: 70px;
+                font-size: 32px;
+                margin-bottom: 16px;
+            }
+
+            .status-title {
+                font-size: 1.25rem;
+            }
+
+            .device-info {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .device-info-icon {
+                width: 36px;
+                height: 36px;
+                font-size: 16px;
+            }
+
+            .form-control {
+                padding: 12px 40px 12px 14px;
+                font-size: 16px;
+            }
+
+            .btn-activate {
+                padding: 12px;
+                font-size: 14px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 16px 12px;
+            }
+
+            .activation-wrap {
+                width: 100%;
+            }
+
+            .activation-card {
+                padding: 20px 16px;
+            }
+
+            .form-label {
+                font-size: 12px;
+            }
+
+            .status-title {
+                font-size: 1.1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="grid-bg"></div>
+    
+    <div class="activation-wrap">
+        <!-- رأس الحالة -->
+        <div class="status-header">
+            <div class="status-icon">
+                <i class="fas fa-lock"></i>
+            </div>
+            <h1 class="status-title">تفعيل الجهاز الجديد 🔐</h1>
+            <p class="status-message">
+                مرحباً {{ user.full_name or user.username }}! هذا هو أول اتصال من هذا الجهاز.
+                <br>
+                يرجى إدخال رمز التفعيل لتأمين حسابك.
+            </p>
+        </div>
+
+        <!-- بطاقة التفعيل الرئيسية -->
+        <div class="activation-card">
+            <!-- شارة الأمان -->
+            <div class="security-badge">
+                <i class="fas fa-shield-alt"></i>
+                <span>اتصال آمن مشفّر</span>
+            </div>
+
+            <!-- معلومات الجهاز -->
+            <div class="device-info">
+                <div class="device-info-icon">
+                    <i class="fas fa-mobile-alt"></i>
+                </div>
+                <div class="device-info-text">
+                    <div class="device-info-label">معلومات الجهاز الحالي</div>
+                    <div class="device-info-value">{{ device_name }}</div>
+                </div>
+            </div>
+
+            <!-- الرسائل -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% for category, message in messages %}
+                    {% if category == 'error' %}
+                        <div class="alert alert-error">
+                            <i class="fas fa-exclamation-circle"></i>
+                            <span>{{ message }}</span>
+                        </div>
+                    {% elif category == 'warning' %}
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <span>{{ message }}</span>
+                        </div>
+                    {% elif category == 'success' %}
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle"></i>
+                            <span>{{ message }}</span>
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            {% endwith %}
+
+            <!-- نص التعليمات -->
+            <div class="instruction-box">
+                <strong>📧 كيف تحصل على رمز التفعيل؟</strong>
+                تحقق من بريدك الإلكتروني أو قم بمراجعة مدير النظام للحصول على رمز التفعيل الخاص بجهازك.
+            </div>
+
+            <!-- نموذج الإدخال -->
+            <form method="POST" id="activationForm">
+                <div class="form-group">
+                    <label class="form-label">رمز التفعيل (Activation Code)</label>
+                    <div class="input-wrap">
+                        <i class="fas fa-key"></i>
+                        <input 
+                            type="text" 
+                            name="activation_code" 
+                            class="form-control" 
+                            placeholder="أدخل الرمز هنا"
+                            maxlength="16"
+                            autocomplete="off"
+                            required
+                            autofocus
+                        >
+                    </div>
+                    <div class="form-hint">
+                        <i class="fas fa-info-circle"></i>
+                        <span>رمز يتكون من أحرف وأرقام</span>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-activate">
+                    <i class="fas fa-check-circle"></i>
+                    تفعيل الجهاز
+                </button>
+                
+                <a href="{{ url_for('login') }}" class="btn-back">
+                    <i class="fas fa-arrow-right"></i>
+                    العودة إلى تسجيل الدخول
+                </a>
+            </form>
+
+            <!-- معلومة إضافية -->
+            <div style="
+                background: rgba(255,255,255,0.02);
+                border-top: 1px solid var(--border);
+                margin-top: 20px;
+                padding-top: 16px;
+                text-align: center;
+                font-size: 12px;
+                color: var(--text-muted);
+            ">
+                <i class="fas fa-lock-open" style="margin-left: 6px;"></i>
+                يتم تشفير جميع البيانات المرسلة باستخدام بروتوكول HTTPS
+            </div>
+        </div>
+
+        <!-- تذييل الصفحة -->
+        <div class="footer-note">
+            {{ app_brand_title }} &copy; 2026 — نظام آمن لإدارة الأجهزة المتصلة
+        </div>
+    </div>
+
+    <!-- سكريبت للتحقق من صيغة الرمز -->
+    <script>
+        const form = document.getElementById('activationForm');
+        const codeInput = form.querySelector('input[name="activation_code"]');
+
+        // تحويل الإدخال إلى أحرف كبيرة
+        codeInput.addEventListener('input', function(e) {
+            e.target.value = e.target.value.toUpperCase();
+        });
+
+        // عدم السماح بأحرف خاصة
+        codeInput.addEventListener('keypress', function(e) {
+            const char = String.fromCharCode(e.which);
+            if (!(/[A-Z0-9]/.test(char))) {
+                e.preventDefault();
+            }
+        });
+
+        // تنسيق الرمز بشكل أفضل
+        codeInput.addEventListener('blur', function() {
+            this.value = this.value.trim().toUpperCase();
+        });
+    </script>
+</body>
+</html>

@@ -9,7 +9,7 @@
         يُعتبر المستخدم <strong>متصلاً</strong> إذا كان نشاطه خلال آخر 5 دقائق. يُحدَّث آخر ظهور تلقائياً أثناء التنقل في النظام.
     </p>
     <div class="table-container"><table>
-        <thead><tr><th>المستخدم</th><th>الاسم</th><th>الدور</th><th>الحالة</th><th>آخر ظهور</th></tr></thead>
+        <thead><tr><th>المستخدم</th><th>الاسم</th><th>الدور</th><th>الحالة</th><th>IP الجهاز</th><th>اسم/وصف الجهاز</th><th>آخر ظهور</th><th>إجراء</th></tr></thead>
         <tbody>
             {% for u in users_list %}
             <tr>
@@ -28,8 +28,19 @@
                     <span class="badge badge-secondary">غير متصل</span>
                     {% endif %}
                 </td>
+                <td style="font-family:monospace;font-size:12px;">{{ u.last_ip or '—' }}</td>
+                <td style="font-size:12px;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ u.last_device or '' }}">{{ u.last_device or '—' }}</td>
                 <td style="color:var(--text-muted);font-size:12.5px;">
                     {% if u.last_seen %}{{ u.last_seen.strftime('%Y/%m/%d %H:%M') }}{% else %}لم يُسجَّل بعد{% endif %}
+                </td>
+                <td>
+                    {% if current_user.id != u.id and u.role in ['user', 'manager'] and u.last_seen and u.last_seen >= online_before %}
+                    <form method="post" action="{{ url_for('connected_users_force_logout', user_id=u.id) }}" onsubmit="return confirm('تأكيد إخراج المستخدم {{ u.username }}؟');" style="display:inline;">
+                        <button type="submit" class="btn btn-danger btn-xs"><i class="fas fa-sign-out-alt"></i> إخراج المستخدم</button>
+                    </form>
+                    {% else %}
+                    <span class="badge badge-secondary">{% if current_user.id == u.id %}الحساب الحالي{% elif not (u.last_seen and u.last_seen >= online_before) %}غير متصل{% else %}غير متاح{% endif %}</span>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}

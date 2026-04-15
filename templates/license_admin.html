@@ -42,17 +42,24 @@
         <div class="card-header"><div class="card-title"><i class="fas fa-database"></i> قاعدة السريالات الجاهزة</div></div>
         <div class="table-container" style="max-height:420px;overflow-y:auto;">
             <table>
-                <thead><tr><th>السريال</th><th>الخطة</th><th>تاريخ الإنشاء</th><th>ملاحظة</th></tr></thead>
+                <thead><tr><th>السريال</th><th>الخطة</th><th>المدة (يوم)</th><th>تاريخ الإنشاء</th><th>ملاحظة</th></tr></thead>
                 <tbody>
                     {% for r in pool %}
                     <tr>
                         <td style="font-family:monospace;font-size:12px;">{{ r.code }}</td>
                         <td><span class="badge badge-info">{{ r.plan }}</span></td>
+                        <td>
+                            {% if r.plan == 'six_months' %}182
+                            {% elif r.plan == 'one_year' %}365
+                            {% elif r.plan == 'custom' %}{{ r.custom_days or '—' }}
+                            {% elif r.plan == 'permanent' %}دائم
+                            {% else %}—{% endif %}
+                        </td>
                         <td style="font-size:12px;color:var(--text-muted);">{{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '—' }}</td>
                         <td style="font-size:12px;">{{ r.note or '—' }}</td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="4"><div class="empty-state" style="padding:20px;"><h3>لا توجد سريالات في المخزن</h3></div></td></tr>
+                    <tr><td colspan="5"><div class="empty-state" style="padding:20px;"><h3>لا توجد سريالات في المخزن</h3></div></td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -61,20 +68,28 @@
 </div>
 
 <div class="card" style="margin-top:20px;">
+    <div class="card-body" style="padding-bottom:0;">
+        <form method="POST" action="{{ url_for('license_admin_end_subscription') }}" onsubmit="return confirm('تأكيد إنهاء الاشتراك الحالي؟ سيُطلب سريال جديد عند الدخول.');">
+            <button type="submit" class="btn btn-danger"><i class="fas fa-power-off"></i> إنهاء الاشتراك</button>
+        </form>
+    </div>
     <div class="card-header"><div class="card-title"><i class="fas fa-history"></i> السريالات المُستَخدمة</div></div>
     <div class="table-container">
         <table>
-            <thead><tr><th>آخر أرقام</th><th>الخطة</th><th>تاريخ التفعيل</th><th>ينتهي</th></tr></thead>
+            <thead><tr><th>آخر أرقام</th><th>الخطة</th><th>معرّف الجهاز</th><th>اسم الجهاز</th><th>IP</th><th>تاريخ التفعيل</th><th>ينتهي</th></tr></thead>
             <tbody>
                 {% for u in used %}
                 <tr>
                     <td style="font-family:monospace;">…{{ u.code_hint }}</td>
                     <td>{{ u.plan }}</td>
+                    <td style="font-family:monospace;font-size:11.5px;max-width:210px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ u.device_identifier or '' }}">{{ u.device_identifier or '—' }}</td>
+                    <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ u.device_name or '' }}">{{ u.device_name or '—' }}</td>
+                    <td style="font-family:monospace;font-size:12px;">{{ u.device_ip or '—' }}</td>
                     <td style="font-size:12px;color:var(--text-muted);">{{ u.activated_at.strftime('%Y-%m-%d %H:%M') if u.activated_at else '—' }}</td>
                     <td>{% if u.expires_at %}{{ u.expires_at.strftime('%Y-%m-%d') }}{% else %}دائم{% endif %}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="4"><div class="empty-state" style="padding:20px;">لا توجد تفعيلات بعد</div></td></tr>
+                <tr><td colspan="7"><div class="empty-state" style="padding:20px;">لا توجد تفعيلات بعد</div></td></tr>
                 {% endfor %}
             </tbody>
         </table>

@@ -16,7 +16,7 @@
         </div>
         <div class="form-group">
             <label class="form-label">رقم أمر / صالة الإنتاج</label>
-            <input type="text" name="production_ref" class="form-control">
+            <input type="text" name="production_ref" class="form-control" required>
         </div>
     </div>
     <div class="form-group">
@@ -78,6 +78,30 @@ ErpProductLinePicker.bindAll('.product-search', {
     getWarehouseId: () => document.getElementById('warehouseId').value,
     requireWarehouse: false,
     useCost: false
+});
+document.querySelector('form[method="POST"]').addEventListener('submit', function(e){
+    const rows = Array.from(document.querySelectorAll('#itemsBody .r'));
+    let ok = false;
+    for (const row of rows) {
+        const pid = (row.querySelector('.pid').value || '').trim();
+        const qty = parseFloat(row.querySelector('input[name="quantity[]"]').value) || 0;
+        if (pid) {
+            if (qty <= 0) {
+                alert('الكمية يجب أن تكون أكبر من صفر');
+                e.preventDefault();
+                return;
+            }
+            ok = true;
+        } else if (qty > 0) {
+            alert('يوجد سطر بدون اختيار صنف');
+            e.preventDefault();
+            return;
+        }
+    }
+    if (!ok) {
+        alert('يجب إضافة صنف واحد على الأقل');
+        e.preventDefault();
+    }
 });
 </script>
 {% endblock %}

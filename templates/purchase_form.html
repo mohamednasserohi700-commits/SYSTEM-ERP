@@ -194,5 +194,30 @@ ErpProductLinePicker.bindAll('.product-search', {
     requireWarehouse: false,
     useCost: true
 });
+document.getElementById('purchaseForm').addEventListener('submit', function(e){
+    const rows = Array.from(document.querySelectorAll('#itemsBody .item-row'));
+    let hasSelectedProduct = false;
+    for (const row of rows) {
+        const pid = (row.querySelector('.pid').value || '').trim();
+        const qty = parseFloat(row.querySelector('.qty').value) || 0;
+        const price = parseFloat(row.querySelector('.price').value) || 0;
+        if (pid) {
+            hasSelectedProduct = true;
+            if (qty <= 0 || price < 0) {
+                alert('تحقق من الكمية والسعر: الكمية > 0 والسعر >= 0');
+                e.preventDefault();
+                return;
+            }
+        } else if (qty > 0 || price > 0) {
+            alert('يوجد سطر بدون اختيار صنف');
+            e.preventDefault();
+            return;
+        }
+    }
+    if (!hasSelectedProduct) {
+        alert('يجب اختيار صنف واحد على الأقل');
+        e.preventDefault();
+    }
+});
 </script>
 {% endblock %}

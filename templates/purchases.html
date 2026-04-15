@@ -18,7 +18,14 @@
                 <td style="color:var(--success);">{{ "{:,.2f}".format(p.paid) }}</td>
                 <td style="color:{{ 'var(--danger)' if p.remaining > 0 else 'var(--success)' }};">{{ "{:,.2f}".format(p.remaining) }}</td>
                 <td style="color:var(--text-muted);">{{ p.date.strftime('%Y/%m/%d') }}</td>
-                <td><a href="{{ url_for('purchase_detail', id=p.id) }}" class="btn btn-outline btn-xs"><i class="fas fa-eye"></i></a></td>
+                <td style="white-space:nowrap;">
+                    <a href="{{ url_for('purchase_detail', id=p.id) }}" class="btn btn-outline btn-xs"><i class="fas fa-eye"></i></a>
+                    {% if can('sales_purchases_delete') %}
+                    <form method="POST" action="{{ url_for('delete_purchase', id=p.id) }}" style="display:inline;" onsubmit="return confirm('تأكيد حذف فاتورة المشتريات {{ p.invoice_number }}؟');">
+                        <button type="submit" class="btn btn-danger btn-xs" title="حذف الفاتورة"><i class="fas fa-trash"></i></button>
+                    </form>
+                    {% endif %}
+                </td>
             </tr>
             {% else %}
             <tr><td colspan="8"><div class="empty-state"><i class="fas fa-shopping-cart"></i><h3>لا توجد فواتير مشتريات</h3></div></td></tr>

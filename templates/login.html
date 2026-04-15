@@ -316,6 +316,34 @@
         document.addEventListener('click', function () {
             document.getElementById('aboutPopup').classList.remove('open');
         });
+        (function(){
+            function readCookie(name){
+                var m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()\\[\\]\\\\/+^]/g, '\\$&') + '=([^;]*)'));
+                return m ? decodeURIComponent(m[1]) : '';
+            }
+            function makeId(){
+                try{
+                    if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+                }catch(e){}
+                return 'dev-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+            }
+            try{
+                var did = (localStorage.getItem('erp_device_id') || '').trim();
+                if (!did) did = (readCookie('erp_device_id') || '').trim();
+                if (!did) {
+                    did = makeId();
+                    localStorage.setItem('erp_device_id', did);
+                } else {
+                    localStorage.setItem('erp_device_id', did);
+                }
+                document.cookie = 'erp_device_id=' + encodeURIComponent(did) + '; path=/; max-age=31536000; samesite=lax';
+            }catch(e){
+                try{
+                    var fallback = makeId();
+                    document.cookie = 'erp_device_id=' + encodeURIComponent(fallback) + '; path=/; max-age=31536000; samesite=lax';
+                }catch(err){}
+            }
+        })();
     </script>
 </body>
 </html>

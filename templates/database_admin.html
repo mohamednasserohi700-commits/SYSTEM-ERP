@@ -14,13 +14,14 @@
     <div class="card">
         <div class="card-header"><div class="card-title"><i class="fas fa-info-circle"></i> الوضع الحالي</div></div>
         <div class="card-body" style="font-size:13px;line-height:1.7;">
+            <p><strong>نوع قاعدة البيانات الحالية:</strong> <code>{{ db_driver }}</code></p>
             {% if is_sqlite %}
             <p><strong>ملف SQLite النشط:</strong><br><code style="word-break:break-all;font-size:11px;">{{ main_sqlite }}</code></p>
             {% if custom_path %}
             <p style="color:var(--text-muted);">مسار مُعرَّف في <code>instance/database_path.json</code>:<br><code style="word-break:break-all;">{{ custom_path }}</code></p>
             {% endif %}
             {% else %}
-            <p>التثبيت الحالي لا يستخدم SQLite مباشرة (مثلاً PostgreSQL). التصدير/الاستيراد التلقائي هنا مخصص لملف SQLite.</p>
+            <p>التثبيت الحالي لا يستخدم SQLite مباشرة. سيتم التصدير/النسخ بصيغة JSON عامة متوافقة مع النظام.</p>
             {% endif %}
         </div>
     </div>
@@ -42,9 +43,9 @@
     <div class="card">
         <div class="card-header"><div class="card-title"><i class="fas fa-download"></i> تصدير ونسخ</div></div>
         <div class="card-body">
-            <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">يُنشئ نسخة في <code>instance/backups/</code> قبل التصدير. كما يعمل النظام <strong>نسخاً تلقائياً يومياً</strong> بعد تشغيل السيرفر (SQLite فقط).</p>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">يُنشئ نسخة في <code>instance/backups/</code> قبل التصدير. مع SQLite تكون النسخة <code>.db</code>، ومع الأنواع الأخرى تكون <code>.json</code>.</p>
             <div style="display:flex;flex-wrap:wrap;gap:10px;">
-                <a href="{{ url_for('database_export') }}" class="btn btn-success"><i class="fas fa-file-download"></i> تنزيل نسخة .db</a>
+                <a href="{{ url_for('database_export') }}" class="btn btn-success"><i class="fas fa-file-download"></i> تنزيل نسخة التصدير</a>
                 <form method="POST" action="{{ url_for('database_backup_now') }}" style="display:inline;">
                     <button type="submit" class="btn btn-outline"><i class="fas fa-copy"></i> نسخ احتياطي الآن</button>
                 </form>
@@ -54,16 +55,12 @@
     <div class="card">
         <div class="card-header"><div class="card-title"><i class="fas fa-file-upload"></i> استيراد ملف قاعدة</div></div>
         <div class="card-body">
-            {% if is_sqlite %}
             <form method="POST" action="{{ url_for('database_import') }}" enctype="multipart/form-data">
                 <div class="form-group">
-                    <input type="file" name="file" class="form-control" accept=".db" required>
+                    <input type="file" name="file" class="form-control" accept="{% if is_sqlite %}.db{% else %}.json{% endif %}" required>
                 </div>
                 <button type="submit" class="btn btn-danger" onclick="return confirm('سيتم استبدال قاعدة البيانات الحالية بعد نسخ احتياطي. متابعة؟');"><i class="fas fa-upload"></i> استيراد واستبدال</button>
             </form>
-            {% else %}
-            <p class="text-muted" style="font-size:13px;">غير متاح لهذا النوع من الاتصال.</p>
-            {% endif %}
         </div>
     </div>
 </div>
