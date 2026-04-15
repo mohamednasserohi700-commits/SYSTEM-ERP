@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+{% set block_icon = 'fas fa-shopping-cart' %}
+{% block title %}فاتورة مشتريات جديدة{% endblock %}
+{% block page_title %}فاتورة مشتريات جديدة{% endblock %}
+{% block breadcrumb %}المشتريات / فاتورة جديدة{% endblock %}
+
+{% block content %}
+<form method="POST" id="purchaseForm">
+    <div style="display: grid; grid-template-columns: 1fr 350px; gap: 20px; align-items: start;">
+        <div>
+            <div class="card" style="margin-bottom: 16px;">
+                <div class="card-header"><div class="card-title"><i class="fas fa-info-circle"></i> بيانات الفاتورة</div></div>
+                <div class="card-body">
+                    <div class="form-grid-3">
+                        <div class="form-group">
+                            <label class="form-label">المورد</label>
+                            <select name="supplier_id" class="form-control">
+                                <option value="">— بدون مورد —</option>
+                                {% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">المخزن *</label>
+                            <select name="warehouse_id" class="form-control" required id="warehouseId">
+                                <option value="">اختر المخزن...</option>
+                                {% for wh in warehouses %}<option value="{{ wh.id }}">{{ wh.name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">ملاحظات</label>
+                            <input type="text" name="notes" class="form-control" placeholder="ملاحظات...">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-list"></i> الأصناف</div>
+                    <button type="button" onclick="addItem()" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> إضافة صنف</button>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead><tr>
+                            <th style="width:45%">الصنف</th>
+                            <th style="width:20%">الكمية</th>
+                            <th style="width:20%">سعر الشراء</th>
+                            <th style="width:12%">الإجمالي</th>
+                            <th style="width:3%"></th>
+                        </tr></thead>
+                        <tbody id="itemsBody">
+                            <tr class="item-row">
+                                <td>
+                                    <div style="position:relative">
+                                        <input type="text" class="form-control product-search" placeholder="ابحث عن صنف..." autocomplete="off">
+                                        <input type="hidden" name="product_id[]" class="pid">
+                                        <div class="product-dropdown" style="display:none;position:absolute;top:100%;right:0;left:0;background:var(--secondary);border:1px solid var(--border);border-radius:8px;z-index:500;max-height:200px;overflow-y:auto;"></div>
+                                    </div>
+                                </td>
+                                <td><input type="number" name="quantity[]" class="form-control qty" value="1" min="0.01" step="0.01" oninput="calcRow(this)"></td>
+                                <td><input type="number" name="price[]" class="form-control price" value="0" min="0" step="0.01" oninput="calcRow(this)"></td>
+                                <td><input class="form-control row-total" readonly style="font-weight:700;color:var(--info);"></td>
+                                <td><button type="button" onclick="removeItem(this)" class="btn btn-danger btn-xs"><i class="fas fa-trash"></i></button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <div class="card" style="position: sticky; top: 80px;">
+                <div class="card-header"><div class="card-title"><i class="fas fa-calculator"></i> الحساب</div></div>
+                <div class="card-body">
+                    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);">
+                        <span style="color:var(--text-muted);">المجموع الفرعي</span>
+                        <span id="subtotalDisplay" style="font-weight:700;">0.00</span>
+                    </div>
+                    <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+                        <label class="form-label" style="margin-bottom:8px;display:block;">خصم إجمالي</label>
+                        <input type="number" name="total_discount" id="totalDiscount" class="form-control" value="0" min="0" step="0.01" oninput="calcTotal()">
+                    </div>
+                    <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+                        <label class="form-label" style="margin-bottom:8px;display:block;">ضريبة القيمة المضافة (مبلغ — قابل للتعديل)</label>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+                            <button type="button" class="btn btn-xs btn-outline" onclick="applyPurchaseVat(14)">احتساب 14%</button>
+                            <button type="button" class="btn btn-xs btn-outline" onclick="applyPurchaseVat(5)">احتساب 5%</button>
+                            <button type="button" class="btn btn-xs btn-outline" onclick="applyPurchaseW1()">اقتراح 1% تحصيل</button>
+                        </div>
+                        <input type="number" name="tax" id="tax" class="form-control" value="0" min="0" step="0.01" oninput="calcTotal()">
+                    </div>
+                    <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+                        <label class="form-label" style="margin-bottom:8px;display:block;">تحصيل من المورد / خصم (مثلاً 1% — يُخصم من الإجمالي)</label>
+                        <input type="number" name="withholding_tax" id="withholdingTax" class="form-control" value="0" min="0" step="0.01" oninput="calcTotal()">
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border);">
+                        <span style="font-size:16px;font-weight:700;">الإجمالي</span>
+                        <span id="totalDisplay" style="font-size:20px;font-weight:800;color:var(--info);">0.00</span>
+                    </div>
+                    <div style="padding:10px 0;">
+                        <label class="form-label" style="margin-bottom:8px;display:block;">المبلغ المدفوع</label>
+                        <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:8px;">
+                            <input type="number" name="paid" id="paid" class="form-control" value="0" min="0" step="0.01" oninput="calcRemaining()" style="flex:1;">
+                            <button type="button" class="btn btn-success" style="white-space:nowrap;padding:8px 12px;" onclick="applyCashPay()">دفع كاش</button>
+                        </div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:12px;background:rgba(239,68,68,0.08);border-radius:8px;">
+                        <span style="color:var(--danger);">المتبقي</span>
+                        <span id="remainingDisplay" style="font-weight:700;color:var(--danger);">0.00</span>
+                    </div>
+                    <button type="submit" class="btn btn-info" style="width:100%;margin-top:16px;padding:14px;">
+                        <i class="fas fa-check-circle"></i> حفظ فاتورة الشراء
+                    </button>
+                    <a href="{{ url_for('purchases') }}" class="btn btn-outline" style="width:100%;margin-top:8px;justify-content:center;">إلغاء</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/product_line_picker.js') }}"></script>
+<script>
+let subtotal = 0;
+function calcRow(input) {
+    const row = input.closest('tr');
+    const qty = parseFloat(row.querySelector('.qty').value) || 0;
+    const price = parseFloat(row.querySelector('.price').value) || 0;
+    const total = qty * price;
+    row.querySelector('.row-total').value = total.toFixed(2);
+    calcTotal();
+}
+function purchaseNetBase() {
+    const disc = parseFloat(document.getElementById('totalDiscount').value) || 0;
+    return Math.max(0, subtotal - disc);
+}
+function calcTotal() {
+    let sub = 0;
+    document.querySelectorAll('.row-total').forEach(el => sub += parseFloat(el.value) || 0);
+    subtotal = sub;
+    document.getElementById('subtotalDisplay').textContent = sub.toFixed(2);
+    const tax = parseFloat(document.getElementById('tax').value) || 0;
+    const wh = parseFloat(document.getElementById('withholdingTax').value) || 0;
+    const total = purchaseNetBase() + tax - wh;
+    document.getElementById('totalDisplay').textContent = total.toFixed(2);
+    calcRemaining();
+}
+function calcRemaining() {
+    const tax = parseFloat(document.getElementById('tax').value) || 0;
+    const wh = parseFloat(document.getElementById('withholdingTax').value) || 0;
+    const total = purchaseNetBase() + tax - wh;
+    const paid = parseFloat(document.getElementById('paid').value) || 0;
+    document.getElementById('remainingDisplay').textContent = Math.max(0, total - paid).toFixed(2);
+}
+function applyCashPay() {
+    const tax = parseFloat(document.getElementById('tax').value) || 0;
+    const wh = parseFloat(document.getElementById('withholdingTax').value) || 0;
+    const total = Math.max(0, purchaseNetBase() + tax - wh);
+    document.getElementById('paid').value = total.toFixed(2);
+    calcRemaining();
+}
+function applyPurchaseVat(pct) {
+    const base = purchaseNetBase();
+    document.getElementById('tax').value = (Math.round(base * (pct / 100) * 100) / 100).toFixed(2);
+    calcTotal();
+}
+function applyPurchaseW1() {
+    const base = purchaseNetBase();
+    document.getElementById('withholdingTax').value = (Math.round(base * 0.01 * 100) / 100).toFixed(2);
+    calcTotal();
+}
+function addItem() {
+    const tbody = document.getElementById('itemsBody');
+    const row = document.querySelector('.item-row').cloneNode(true);
+    row.querySelector('.pid').value = '';
+    row.querySelector('.product-search').value = '';
+    row.querySelector('.row-total').value = '';
+    row.querySelector('.qty').value = '1';
+    row.querySelector('.price').value = '0';
+    row.querySelector('.product-dropdown').style.display = 'none';
+    tbody.appendChild(row);
+    ErpProductLinePicker.bind(row.querySelector('.product-search'), {
+        getWarehouseId: function () { return document.getElementById('warehouseId').value; },
+        requireWarehouse: false,
+        useCost: true
+    });
+}
+function removeItem(btn) {
+    if(document.querySelectorAll('.item-row').length > 1) { btn.closest('tr').remove(); calcTotal(); }
+}
+ErpProductLinePicker.bindAll('.product-search', {
+    getWarehouseId: function () { return document.getElementById('warehouseId').value; },
+    requireWarehouse: false,
+    useCost: true
+});
+document.getElementById('purchaseForm').addEventListener('submit', function(e){
+    const rows = Array.from(document.querySelectorAll('#itemsBody .item-row'));
+    let hasSelectedProduct = false;
+    for (const row of rows) {
+        const pid = (row.querySelector('.pid').value || '').trim();
+        const qty = parseFloat(row.querySelector('.qty').value) || 0;
+        const price = parseFloat(row.querySelector('.price').value) || 0;
+        if (pid) {
+            hasSelectedProduct = true;
+            if (qty <= 0 || price < 0) {
+                alert('تحقق من الكمية والسعر: الكمية > 0 والسعر >= 0');
+                e.preventDefault();
+                return;
+            }
+        } else if (qty > 0 || price > 0) {
+            alert('يوجد سطر بدون اختيار صنف');
+            e.preventDefault();
+            return;
+        }
+    }
+    if (!hasSelectedProduct) {
+        alert('يجب اختيار صنف واحد على الأقل');
+        e.preventDefault();
+    }
+});
+</script>
+{% endblock %}
