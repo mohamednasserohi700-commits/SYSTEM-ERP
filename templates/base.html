@@ -239,12 +239,9 @@
 
         /* MOBILE */
         .mobile-menu-btn{display:inline-flex !important}
-        @media(max-width:900px){
-            .sidebar{width:min(88vw,320px);transform:translateX(100%) !important;transition:transform .28s cubic-bezier(.4,0,.2,1);visibility:hidden}
-            .sidebar.open{transform:translateX(0) !important;visibility:visible}
-            .main-content{margin-right:0}
-            .mobile-menu-btn{display:inline-flex !important}
-        }
+        .sidebar{width:min(88vw,320px);transform:translateX(100%) !important;transition:transform .28s cubic-bezier(.4,0,.2,1);visibility:hidden}
+        .sidebar.open{transform:translateX(0) !important;visibility:visible}
+        .main-content{margin-right:0 !important}
         @media(max-width:1400px){
             .nav-link{font-size:calc(11.25px * var(--ui-font-scale));padding:8px 9px;gap:8px}
             .nav-label{font-size:calc(8.5px * var(--ui-font-scale))}
@@ -631,6 +628,8 @@ function toggleSidebar(forceOpen){
     const s = document.getElementById('sidebar');
     const o = document.getElementById('sidebarOverlay');
     if(!s || !o) return;
+    const isMobile = true;
+    if(!isMobile) return;
     const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !s.classList.contains('open');
     try{ sessionStorage.setItem('erp_sidebar_open_mobile', shouldOpen ? '1' : '0'); }catch(e){}
     s.classList.toggle('open', shouldOpen);
@@ -641,7 +640,7 @@ function toggleSidebar(forceOpen){
     document.body.style.overflow = shouldOpen ? 'hidden' : '';
 }
 window.addEventListener('resize', function(){
-    if(window.matchMedia('(max-width: 900px)').matches) return;
+    if(true) return;
     const s = document.getElementById('sidebar');
     const o = document.getElementById('sidebarOverlay');
     if(!s || !o) return;
