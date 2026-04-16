@@ -628,8 +628,6 @@ function toggleSidebar(forceOpen){
     const s = document.getElementById('sidebar');
     const o = document.getElementById('sidebarOverlay');
     if(!s || !o) return;
-    const isMobile = true;
-    if(!isMobile) return;
     const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !s.classList.contains('open');
     try{ sessionStorage.setItem('erp_sidebar_open_mobile', shouldOpen ? '1' : '0'); }catch(e){}
     s.classList.toggle('open', shouldOpen);
