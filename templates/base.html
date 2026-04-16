@@ -251,7 +251,7 @@
         }
     </style>
     <script>
-    (function(){try{var lw=localStorage.getItem('erp_layout_max_width');if(lw)document.documentElement.style.setProperty('--layout-max',lw);}catch(e){}})();
+    (function(){try{var m=localStorage.getItem('erp_layout_max_width');if(m==='mobile')document.documentElement.style.setProperty('--layout-max','480px');else if(m==='pc')document.documentElement.style.setProperty('--layout-max','100%');}catch(e){}})();
     </script>
     <script>
     (function(){try{var t=localStorage.getItem('erp_theme')||'dark';document.documentElement.setAttribute('data-theme',t);
@@ -475,13 +475,21 @@
             </span>
             {% endif %}
             <button type="button" class="theme-toggle" onclick="erpToggleTheme()" title="تبديل الوضع الفاتح/الداكن"><i class="fas fa-adjust"></i></button>
-            <div class="erp-device-layout-tools" style="display:flex;align-items:center;gap:6px;flex-shrink:0;" title="يُحفظ على هذا الجهاز/المتصفح فقط — لا يتبع حساب المستخدم">
-                <select id="erpLayoutWidth" class="form-control" aria-label="عرض المحتوى" style="width:auto;min-width:104px;max-width:132px;padding:6px 8px;font-size:11px;border-radius:8px;cursor:pointer;">
-                    <option value="">عرض: افتراضي</option>
-                    {% for w in ['100%','1920px','1600px','1400px','1200px','1024px'] %}
-                    <option value="{{ w }}">{{ w }}</option>
-                    {% endfor %}
-                </select>
+            <div class="erp-device-layout-tools" style="display:flex;align-items:center;gap:4px;flex-shrink:0;" title="يُحفظ على هذا الجهاز/المتصفح فقط">
+                <button id="erpLayoutPC" onclick="erpSetLayout('pc')" title="عرض PC — محتوى موسّع"
+                    style="display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:7px;
+                           border:1px solid var(--border);background:rgba(255,255,255,.04);
+                           color:var(--text-muted);font-family:'Cairo',sans-serif;font-size:11.5px;font-weight:600;
+                           cursor:pointer;transition:all .18s;white-space:nowrap;">
+                    <i class="fas fa-desktop" style="font-size:12px;"></i> PC
+                </button>
+                <button id="erpLayoutMobile" onclick="erpSetLayout('mobile')" title="عرض الهاتف — محتوى ضيّق"
+                    style="display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:7px;
+                           border:1px solid var(--border);background:rgba(255,255,255,.04);
+                           color:var(--text-muted);font-family:'Cairo',sans-serif;font-size:11.5px;font-weight:600;
+                           cursor:pointer;transition:all .18s;white-space:nowrap;">
+                    <i class="fas fa-mobile-alt" style="font-size:12px;"></i> هاتف
+                </button>
             </div>
             {% block topbar_actions %}{% endblock %}
 
@@ -559,26 +567,39 @@
 <script>
 (function(){
     var KEY_W = 'erp_layout_max_width';
-    var selW = document.getElementById('erpLayoutWidth');
     var root = document.documentElement;
-    if(selW){
-        try{
-            var sw = localStorage.getItem(KEY_W);
-            selW.value = sw || '';
-        }catch(e){ selW.value = ''; }
-        selW.addEventListener('change', function(){
-            var v = (this.value || '').trim();
-            try{
-                if(!v){
-                    localStorage.removeItem(KEY_W);
-                    root.style.removeProperty('--layout-max');
-                }else{
-                    localStorage.setItem(KEY_W, v);
-                    root.style.setProperty('--layout-max', v);
-                }
-            }catch(err){}
-        });
+    var btnPC = document.getElementById('erpLayoutPC');
+    var btnMob = document.getElementById('erpLayoutMobile');
+
+    var ACTIVE_STYLE = 'border-color:var(--accent);color:var(--accent);background:var(--accent-soft);';
+    var IDLE_STYLE   = 'border-color:var(--border);color:var(--text-muted);background:rgba(255,255,255,.04);';
+
+    function applyLayout(mode, save){
+        var w = (mode === 'mobile') ? '480px' : '100%';
+        root.style.setProperty('--layout-max', w);
+        if(save){ try{ localStorage.setItem(KEY_W, mode); }catch(e){} }
+        if(btnPC)  btnPC.style.cssText  += (mode === 'pc')     ? ACTIVE_STYLE : IDLE_STYLE;
+        if(btnMob) btnMob.style.cssText += (mode === 'mobile') ? ACTIVE_STYLE : IDLE_STYLE;
     }
+
+    // تحميل الحالة المحفوظة
+    var saved = '';
+    try{ saved = localStorage.getItem(KEY_W) || ''; }catch(e){}
+    if(saved === 'mobile' || saved === 'pc'){ applyLayout(saved, false); }
+
+    window.erpSetLayout = function(mode){
+        var current = '';
+        try{ current = localStorage.getItem(KEY_W) || ''; }catch(e){}
+        if(current === mode){
+            // نفس الزر → إلغاء التفعيل (reset)
+            root.style.removeProperty('--layout-max');
+            try{ localStorage.removeItem(KEY_W); }catch(e){}
+            if(btnPC)  btnPC.style.cssText  += IDLE_STYLE;
+            if(btnMob) btnMob.style.cssText += IDLE_STYLE;
+        } else {
+            applyLayout(mode, true);
+        }
+    };
 })();
 async function loadNotif() {
     try {
