@@ -70,13 +70,7 @@
         .nav-badge{background:var(--danger);color:white;font-size:9.5px;padding:2px 6px;border-radius:20px;font-weight:800;
             z-index:1;flex-shrink:0;min-width:18px;text-align:center}
         .nav-badge.warn{background:var(--warning);color:#0f1422}
-        .sidebar-footer{margin-top:auto;padding:13px 10px;border-top:1px solid var(--border);flex-shrink:0}
-        .user-card{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;
-            background:rgba(255,255,255,.03);border:1px solid var(--border)}
-        .user-avatar{width:34px;height:34px;background:linear-gradient(135deg,var(--accent),#c97000);border-radius:50%;
-            display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#0f1422;flex-shrink:0}
-        .user-name{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .user-role{font-size:10.5px;color:var(--text-muted)}
+        
         .icon-btn{width:30px;height:30px;border-radius:7px;background:transparent;border:1px solid var(--border);
             color:var(--text-muted);display:flex;align-items:center;justify-content:center;font-size:12px;
             cursor:pointer;text-decoration:none;transition:all .2s}
@@ -463,19 +457,6 @@
         </div>
     </nav>
 
-    <div class="sidebar-footer">
-        <div class="user-card">
-            <div class="user-avatar">{{ (current_user.full_name or current_user.username)[0] }}</div>
-            <div style="flex:1;min-width:0;">
-                <div class="user-name">{{ current_user.full_name or current_user.username }}</div>
-                <div class="user-role">{% if current_user.role=='developer' %}مطوّر النظام{% elif current_user.role=='admin' %}مدير النظام{% elif current_user.role=='manager' %}مشرف{% else %}مستخدم{% endif %}</div>
-            </div>
-            <div style="display:flex;gap:4px;margin-right:auto;">
-                <a href="{{ url_for('change_password') }}" class="icon-btn" title="تغيير كلمة المرور"><i class="fas fa-key"></i></a>
-                <a href="{{ url_for('logout') }}" class="icon-btn danger" title="تسجيل الخروج"><i class="fas fa-sign-out-alt"></i></a>
-            </div>
-        </div>
-    </div>
 </aside>
 
 <main class="main-content">
@@ -529,6 +510,32 @@
                     <div id="notifList"><div class="notif-empty"><i class="fas fa-check-circle" style="font-size:26px;display:block;margin-bottom:10px;color:var(--success);opacity:.7;"></i>لا توجد إشعارات</div></div>
                 </div>
             </div>
+
+            <!-- User info + Logout glass button -->
+            <div style="display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;
+                        border-radius:10px;border:1px solid rgba(255,255,255,.10);
+                        background:rgba(255,255,255,.05);backdrop-filter:blur(12px);
+                        -webkit-backdrop-filter:blur(12px);flex-shrink:0;">
+                <div style="width:30px;height:30px;background:linear-gradient(135deg,var(--accent),#c97000);
+                            border-radius:50%;display:flex;align-items:center;justify-content:center;
+                            font-weight:800;font-size:12px;color:#0f1422;flex-shrink:0;">
+                    {{ (current_user.full_name or current_user.username)[0] }}
+                </div>
+                <div style="display:flex;flex-direction:column;line-height:1.2;min-width:0;">
+                    <span style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px;">{{ current_user.full_name or current_user.username }}</span>
+                    <span style="font-size:10px;color:var(--text-muted);">{% if current_user.role=='developer' %}مطوّر النظام{% elif current_user.role=='admin' %}مدير النظام{% elif current_user.role=='manager' %}مشرف{% else %}مستخدم{% endif %}</span>
+                </div>
+                <a href="{{ url_for('logout') }}" title="تسجيل الخروج"
+                   style="display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:7px;
+                          background:rgba(239,68,68,.10);border:1px solid rgba(239,68,68,.25);
+                          color:#f87171;font-size:12px;font-weight:600;text-decoration:none;
+                          transition:all .2s;white-space:nowrap;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);"
+                   onmouseover="this.style.background='rgba(239,68,68,.22)';this.style.borderColor='rgba(239,68,68,.5)'"
+                   onmouseout="this.style.background='rgba(239,68,68,.10)';this.style.borderColor='rgba(239,68,68,.25)'">
+                    <i class="fas fa-sign-out-alt"></i> تسجيل خروج
+                </a>
+            </div>
+
         </div>
     </div>
 
