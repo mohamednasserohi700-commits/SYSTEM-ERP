@@ -631,8 +631,6 @@ function toggleSidebar(forceOpen){
     const s = document.getElementById('sidebar');
     const o = document.getElementById('sidebarOverlay');
     if(!s || !o) return;
-    const isMobile = window.matchMedia('(max-width: 900px)').matches;
-    if(!isMobile) return;
     const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !s.classList.contains('open');
     try{ sessionStorage.setItem('erp_sidebar_open_mobile', shouldOpen ? '1' : '0'); }catch(e){}
     // force repaint قبل تطبيق الـ class — يحل مشكلة بعض متصفحات الموبايل
@@ -654,6 +652,7 @@ window.addEventListener('resize', function(){
     s.classList.remove('open');
     s.style.transform = '';
     s.style.visibility = '';
+    s.style.willChange = '';
     o.style.display = 'none';
     document.body.style.overflow = '';
 });
