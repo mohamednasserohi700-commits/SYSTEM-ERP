@@ -48,8 +48,8 @@
 
         /* SIDEBAR — التمرير داخل القائمة فقط حتى لا يتداخل بطاقة المستخدم مع الروابط */
         .sidebar{width:var(--sidebar-w);background:var(--secondary);height:var(--app-vh);position:fixed;right:0;top:0;
-            display:flex;flex-direction:column;border-left:1px solid var(--border);z-index:1000;
-            overflow:hidden;min-height:0}
+            display:flex;flex-direction:column;border-left:1px solid var(--border);z-index:1200;
+            min-height:0}
         .sidebar-nav{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.08) transparent;overflow-anchor:none}
         .sidebar-logo{padding:19px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0}
         .logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--accent),#e07b00);border-radius:10px;
@@ -240,8 +240,8 @@
         /* MOBILE */
         .mobile-menu-btn{display:none}
         @media(max-width:900px){
-            .sidebar{width:min(88vw,320px);transform:translateX(100%) !important;transition:transform .28s cubic-bezier(.4,0,.2,1);visibility:hidden}
-            .sidebar.open{transform:translateX(0) !important;visibility:visible}
+            .sidebar{width:min(88vw,320px);transform:translateX(110%) !important;transition:transform .28s cubic-bezier(.4,0,.2,1);visibility:hidden;overflow:hidden;touch-action:pan-y}
+            .sidebar.open{transform:translateX(0) !important;visibility:visible;overflow:hidden}
             .main-content{margin-right:0}
             .mobile-menu-btn{display:inline-flex !important}
         }
@@ -563,7 +563,7 @@
     <div class="app-footer-note">{{ app_brand_title }} © 2026 — نظام محاسبة وإدارة متكامل</div>
 </main>
 
-<div id="sidebarOverlay" onclick="toggleSidebar()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;"></div>
+<div id="sidebarOverlay" onclick="toggleSidebar()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1100;"></div>
 
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 <script>
@@ -635,12 +635,15 @@ function toggleSidebar(forceOpen){
     if(!isMobile) return;
     const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !s.classList.contains('open');
     try{ sessionStorage.setItem('erp_sidebar_open_mobile', shouldOpen ? '1' : '0'); }catch(e){}
+    // force repaint قبل تطبيق الـ class — يحل مشكلة بعض متصفحات الموبايل
+    s.style.willChange = 'transform, visibility';
+    void s.offsetWidth; // trigger reflow
     s.classList.toggle('open', shouldOpen);
-    // Fallback لبعض متصفحات الموبايل التي لا تطبق class transform بثبات.
-    s.style.transform = shouldOpen ? 'translateX(0)' : 'translateX(100%)';
+    s.style.transform = shouldOpen ? 'translateX(0)' : 'translateX(110%)';
     s.style.visibility = shouldOpen ? 'visible' : 'hidden';
     o.style.display = shouldOpen ? 'block' : 'none';
     document.body.style.overflow = shouldOpen ? 'hidden' : '';
+    if(!shouldOpen){ setTimeout(function(){ s.style.willChange = ''; }, 320); }
 }
 window.addEventListener('resize', function(){
     if(window.matchMedia('(max-width: 900px)').matches) return;
