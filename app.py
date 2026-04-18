@@ -1535,6 +1535,7 @@ def new_sale():
         if not warehouse_id:
             flash('يرجى اختيار المخزن قبل الحفظ', 'error')
             return redirect(url_for('new_sale'))
+        warehouse_id = int(warehouse_id)
         valid_lines_check = [pid for i, pid in enumerate(product_ids) if pid and float(quantities[i] or 0) > 0 and float(prices[i] or 0) > 0]
         if not valid_lines_check:
             flash('يرجى إضافة صنف واحد على الأقل بكمية وسعر صحيحين قبل الحفظ', 'error')
@@ -1643,6 +1644,7 @@ def new_purchase():
         if not warehouse_id:
             flash('يرجى اختيار المخزن قبل الحفظ', 'error')
             return redirect(url_for('new_purchase'))
+        warehouse_id = int(warehouse_id)
         valid_lines = [pid for i, pid in enumerate(product_ids) if pid and float(quantities[i] or 0) > 0 and float(prices[i] or 0) > 0]
         if not valid_lines:
             flash('يرجى إضافة صنف واحد على الأقل بكمية وسعر صحيحين قبل الحفظ', 'error')
