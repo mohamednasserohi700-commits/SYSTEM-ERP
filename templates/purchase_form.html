@@ -100,15 +100,19 @@
                     <div style="padding:10px 0;">
                         <label class="form-label" style="margin-bottom:8px;display:block;">المبلغ المدفوع</label>
                         <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:8px;">
-                            <input type="number" name="paid" id="paid" class="form-control" value="0" min="0" step="0.01" oninput="calcRemaining()" style="flex:1;">
+                            <input type="number" name="paid" id="paid" class="form-control" value="0" min="0" step="0.01" oninput="onPaidInput()" style="flex:1;">
                             <button type="button" class="btn btn-success" style="white-space:nowrap;padding:8px 12px;" onclick="applyCashPay()">دفع كاش</button>
                         </div>
+                        <label id="ajalLabel" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:rgba(59,130,246,.06);margin-top:6px;">
+                            <input type="checkbox" name="is_ajal" id="isAjal" value="1" onchange="onAjalChange()" style="width:16px;height:16px;accent-color:var(--info);cursor:pointer;">
+                            <span style="font-size:13px;font-weight:600;color:var(--info);"><i class="fas fa-clock" style="margin-left:4px;"></i> آجل — سيُسدَّد لاحقاً</span>
+                        </label>
                     </div>
                     <div style="display:flex;justify-content:space-between;padding:12px;background:rgba(239,68,68,0.08);border-radius:8px;">
                         <span style="color:var(--danger);">المتبقي</span>
                         <span id="remainingDisplay" style="font-weight:700;color:var(--danger);">0.00</span>
                     </div>
-                    <button type="submit" class="btn btn-info" style="width:100%;margin-top:16px;padding:14px;">
+                    <button type="submit" id="submitBtn" class="btn btn-info" style="width:100%;margin-top:16px;padding:14px;">
                         <i class="fas fa-check-circle"></i> حفظ فاتورة الشراء
                     </button>
                     <a href="{{ url_for('purchases') }}" class="btn btn-outline" style="width:100%;margin-top:8px;justify-content:center;">إلغاء</a>
@@ -146,6 +150,32 @@ function calcTotal() {
     document.getElementById('totalDisplay').textContent = total.toFixed(2);
     calcRemaining();
 }
+function onPaidInput() {
+    document.getElementById('isAjal').checked = false;
+    calcRemaining();
+    updateSubmitBtn();
+}
+function onAjalChange() {
+    if (document.getElementById('isAjal').checked) {
+        document.getElementById('paid').value = '0';
+        calcRemaining();
+    }
+    updateSubmitBtn();
+}
+function updateSubmitBtn() {
+    const paid = parseFloat(document.getElementById('paid').value) || 0;
+    const ajal = document.getElementById('isAjal').checked;
+    const btn  = document.getElementById('submitBtn');
+    if (paid > 0 || ajal) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.title = '';
+    } else {
+        btn.disabled = true;
+        btn.style.opacity = '0.45';
+        btn.title = 'يرجى إدخال المبلغ المدفوع أو تحديد آجل';
+    }
+}
 function calcRemaining() {
     const tax = parseFloat(document.getElementById('tax').value) || 0;
     const wh = parseFloat(document.getElementById('withholdingTax').value) || 0;
@@ -158,7 +188,9 @@ function applyCashPay() {
     const wh = parseFloat(document.getElementById('withholdingTax').value) || 0;
     const total = Math.max(0, purchaseNetBase() + tax - wh);
     document.getElementById('paid').value = total.toFixed(2);
+    document.getElementById('isAjal').checked = false;
     calcRemaining();
+    updateSubmitBtn();
 }
 function applyPurchaseVat(pct) {
     const base = purchaseNetBase();
@@ -189,6 +221,7 @@ function addItem() {
 function removeItem(btn) {
     if(document.querySelectorAll('.item-row').length > 1) { btn.closest('tr').remove(); calcTotal(); }
 }
+updateSubmitBtn();
 ErpProductLinePicker.bindAll('.product-search', {
     getWarehouseId: function () { return document.getElementById('warehouseId').value; },
     requireWarehouse: false,
