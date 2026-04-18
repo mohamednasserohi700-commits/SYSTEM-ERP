@@ -124,6 +124,8 @@ class User(UserMixin, db.Model):
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_seen = db.Column(db.DateTime, nullable=True)
+    last_ip = db.Column(db.String(64), nullable=True)
+    last_user_agent = db.Column(db.String(256), nullable=True)
     permissions = db.Column(db.Text)  # JSON list of permission keys; empty = استخدام صلاحيات الدور
 
     def set_password(self, password):
@@ -870,11 +872,17 @@ def ensure_schema():
                     conn.execute(text('ALTER TABLE purchase ADD COLUMN withholding_tax FLOAT DEFAULT 0'))
         if 'user' in tables:
             ucols = {c['name'] for c in insp.get_columns('user')}
+            utbl = '"user"' if insp.bind.dialect.name == 'postgresql' else 'user'
             if 'last_seen' not in ucols:
                 ls_sql = 'TIMESTAMP' if insp.bind.dialect.name == 'postgresql' else 'DATETIME'
-                utbl = '"user"' if insp.bind.dialect.name == 'postgresql' else 'user'
                 with db.engine.begin() as conn:
                     conn.execute(text(f'ALTER TABLE {utbl} ADD COLUMN last_seen {ls_sql}'))
+            if 'last_ip' not in ucols:
+                with db.engine.begin() as conn:
+                    conn.execute(text(f'ALTER TABLE {utbl} ADD COLUMN last_ip VARCHAR(64)'))
+            if 'last_user_agent' not in ucols:
+                with db.engine.begin() as conn:
+                    conn.execute(text(f'ALTER TABLE {utbl} ADD COLUMN last_user_agent VARCHAR(256)'))
         try:
             db.create_all()
         except Exception:
@@ -1085,7 +1093,13 @@ def _maybe_bump_last_seen():
         if now - last < 50:
             return
         session['_ls_bump_at'] = now
-        User.query.filter_by(id=current_user.id).update({'last_seen': datetime.utcnow()})
+        ip = (request.headers.get('X-Forwarded-For') or request.remote_addr or '').split(',')[0].strip()
+        ua = (request.headers.get('User-Agent') or '')[:256]
+        User.query.filter_by(id=current_user.id).update({
+            'last_seen': datetime.utcnow(),
+            'last_ip': ip,
+            'last_user_agent': ua,
+        })
         db.session.commit()
     except Exception:
         db.session.rollback()
