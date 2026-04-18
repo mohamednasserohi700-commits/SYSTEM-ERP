@@ -1525,11 +1525,20 @@ def sales():
 def new_sale():
     if request.method == 'POST':
         customer_id = request.form.get('customer_id') or None
-        warehouse_id = request.form['warehouse_id']
+        warehouse_id = request.form.get('warehouse_id') or None
         product_ids = request.form.getlist('product_id[]')
         quantities = request.form.getlist('quantity[]')
         prices = request.form.getlist('price[]')
         discounts = request.form.getlist('discount[]')
+
+        # ── Validation: لا حفظ بدون بيانات كاملة ──
+        if not warehouse_id:
+            flash('يرجى اختيار المخزن قبل الحفظ', 'error')
+            return redirect(url_for('new_sale'))
+        valid_lines_check = [pid for i, pid in enumerate(product_ids) if pid and float(quantities[i] or 0) > 0 and float(prices[i] or 0) > 0]
+        if not valid_lines_check:
+            flash('يرجى إضافة صنف واحد على الأقل بكمية وسعر صحيحين قبل الحفظ', 'error')
+            return redirect(url_for('new_sale'))
 
         lines = []
         for i, pid in enumerate(product_ids):
@@ -1622,11 +1631,23 @@ def purchases():
 def new_purchase():
     if request.method == 'POST':
         supplier_id = request.form.get('supplier_id') or None
-        warehouse_id = request.form['warehouse_id']
+        warehouse_id = request.form.get('warehouse_id') or None
         product_ids = request.form.getlist('product_id[]')
         quantities = request.form.getlist('quantity[]')
         prices = request.form.getlist('price[]')
-        
+
+        # ── Validation: لا حفظ بدون بيانات كاملة ──
+        if not supplier_id:
+            flash('يرجى اختيار المورد قبل الحفظ', 'error')
+            return redirect(url_for('new_purchase'))
+        if not warehouse_id:
+            flash('يرجى اختيار المخزن قبل الحفظ', 'error')
+            return redirect(url_for('new_purchase'))
+        valid_lines = [pid for i, pid in enumerate(product_ids) if pid and float(quantities[i] or 0) > 0 and float(prices[i] or 0) > 0]
+        if not valid_lines:
+            flash('يرجى إضافة صنف واحد على الأقل بكمية وسعر صحيحين قبل الحفظ', 'error')
+            return redirect(url_for('new_purchase'))
+
         purchase = Purchase(
             invoice_number=get_next_number('PUR', Purchase, 'invoice_number'),
             supplier_id=supplier_id,
@@ -1690,13 +1711,22 @@ def sale_returns():
 @login_required
 def new_sale_return():
     if request.method == 'POST':
-        sale_id = request.form['sale_id']
+        sale_id = request.form.get('sale_id') or None
+        if not sale_id:
+            flash('يرجى اختيار فاتورة البيع قبل الحفظ', 'error')
+            return redirect(url_for('new_sale_return'))
         sale = Sale.query.options(joinedload(Sale.items)).get_or_404(sale_id)
         product_ids = request.form.getlist('product_id[]')
         quantities = request.form.getlist('quantity[]')
         prices = request.form.getlist('price[]')
         discounts = request.form.getlist('discount[]')
         extra_discounts = request.form.getlist('extra_discount[]')
+
+        # ── Validation: لا حفظ بدون أصناف ──
+        valid_items_sr = [pid for i, pid in enumerate(product_ids) if pid and float(quantities[i] or 0) > 0]
+        if not valid_items_sr:
+            flash('يرجى إضافة صنف واحد على الأقل بكمية صحيحة قبل الحفظ', 'error')
+            return redirect(url_for('new_sale_return'))
 
         planned_qty = defaultdict(float)
         for i, pid in enumerate(product_ids):
@@ -2522,13 +2552,22 @@ def purchase_returns():
 @login_required
 def new_purchase_return():
     if request.method == 'POST':
-        purchase_id = request.form['purchase_id']
+        purchase_id = request.form.get('purchase_id') or None
+        if not purchase_id:
+            flash('يرجى اختيار فاتورة الشراء قبل الحفظ', 'error')
+            return redirect(url_for('new_purchase_return'))
         purchase = Purchase.query.options(joinedload(Purchase.items).joinedload(PurchaseItem.product)).get_or_404(purchase_id)
         product_ids = request.form.getlist('product_id[]')
         quantities = request.form.getlist('quantity[]')
         prices = request.form.getlist('price[]')
         discounts = request.form.getlist('discount[]')
         extra_discounts = request.form.getlist('extra_discount[]')
+
+        # ── Validation: لا حفظ بدون أصناف ──
+        valid_items = [pid for i, pid in enumerate(product_ids) if pid and float(quantities[i] or 0) > 0]
+        if not valid_items:
+            flash('يرجى إضافة صنف واحد على الأقل بكمية صحيحة قبل الحفظ', 'error')
+            return redirect(url_for('new_purchase_return'))
 
         planned_qty = defaultdict(float)
         for i, pid in enumerate(product_ids):
