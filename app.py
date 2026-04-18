@@ -1191,6 +1191,16 @@ def login():
         user = User.query.filter_by(username=request.form['username']).first()
         if user and user.check_password(request.form['password']) and user.is_active:
             login_user(user)
+            # تسجيل IP واسم الجهاز فور تسجيل الدخول
+            try:
+                ip = (request.headers.get('X-Forwarded-For') or request.remote_addr or '').split(',')[0].strip()
+                ua = (request.headers.get('User-Agent') or '')[:256]
+                user.last_seen = datetime.utcnow()
+                user.last_ip = ip
+                user.last_user_agent = ua
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
             return redirect(safe_home_url_for(user))
         flash('اسم المستخدم أو كلمة المرور غير صحيحة', 'error')
     return render_template('login.html')
@@ -1577,6 +1587,11 @@ def new_sale():
         if not valid_lines_check:
             flash('يرجى إضافة صنف واحد على الأقل بكمية وسعر صحيحين قبل الحفظ', 'error')
             return redirect(url_for('new_sale'))
+        paid_val = float(request.form.get('paid', 0) or 0)
+        is_ajal  = request.form.get('is_ajal') == '1'
+        if paid_val <= 0 and not is_ajal:
+            flash('يرجى إدخال المبلغ المدفوع أو تحديد "آجل" لحفظ الفاتورة', 'error')
+            return redirect(url_for('new_sale'))
 
         lines = []
         for i, pid in enumerate(product_ids):
@@ -1705,6 +1720,11 @@ def new_purchase():
         valid_lines = [pid for i, pid in enumerate(product_ids) if pid and float(quantities[i] or 0) > 0 and float(prices[i] or 0) > 0]
         if not valid_lines:
             flash('يرجى إضافة صنف واحد على الأقل بكمية وسعر صحيحين قبل الحفظ', 'error')
+            return redirect(url_for('new_purchase'))
+        paid_val = float(request.form.get('paid', 0) or 0)
+        is_ajal  = request.form.get('is_ajal') == '1'
+        if paid_val <= 0 and not is_ajal:
+            flash('يرجى إدخال المبلغ المدفوع أو تحديد "آجل" لحفظ الفاتورة', 'error')
             return redirect(url_for('new_purchase'))
 
         purchase = Purchase(
@@ -2794,9 +2814,13 @@ def connected_users_force_logout(user_id):
         flash('لا يمكنك إخراج نفسك', 'error')
         return redirect(url_for('connected_users_page'))
     target = User.query.get_or_404(user_id)
-    # منع إخراج developer من غير developer
-    if target.role == 'developer' and current_user.role != 'developer':
-        flash('لا صلاحية لإخراج هذا المستخدم', 'error')
+    # ترتيب الصلاحيات: developer > admin > manager > user
+    ROLE_RANK = {'developer': 4, 'admin': 3, 'manager': 2, 'user': 1}
+    my_rank     = ROLE_RANK.get(current_user.role, 1)
+    target_rank = ROLE_RANK.get(target.role, 1)
+    # لا يمكن إخراج مستخدم له نفس الرتبة أو أعلى
+    if target_rank >= my_rank:
+        flash('لا صلاحية لإخراج هذا المستخدم — لا يمكنك إخراج من هو في نفس مستواك أو أعلى', 'error')
         return redirect(url_for('connected_users_page'))
     target.last_seen = None
     db.session.commit()
