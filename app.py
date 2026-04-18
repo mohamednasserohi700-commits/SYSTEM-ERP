@@ -761,9 +761,12 @@ def resolve_sqlite_main_path():
         if u.drivername != 'sqlite' or not u.database or u.database == ':memory:':
             return None
         dbn = u.database
+        # مسار مطلق
         if os.path.isabs(dbn) or (len(dbn) > 2 and dbn[1] == ':'):
-            return dbn
-        return os.path.abspath(os.path.join(_BASE_DIR, dbn))
+            # لو المسار موجود فعلاً ارجعه، وإلا ارجع None
+            return dbn if os.path.isfile(dbn) else None
+        path = os.path.abspath(os.path.join(_BASE_DIR, dbn))
+        return path
     except Exception:
         return None
 
@@ -784,14 +787,82 @@ def _prune_old_backups(keep=25):
         pass
 
 
-def sqlite_backup_to_folder(tag='manual'):
-    src = resolve_sqlite_main_path()
-    if not src or not os.path.isfile(src):
-        return None
+def get_custom_backup_dir():
+    """يرجع المجلد المخصص للنسخ الاحتياطي أو المجلد الافتراضي."""
+    try:
+        gs = get_app_settings_dict(branch_id=None)
+        custom = (gs.get('backup_custom_dir') or '').strip()
+        if custom and os.path.isdir(custom):
+            return custom
+    except Exception:
+        pass
+    return BACKUPS_DIR
+
+
+def erp_backup(tag='manual'):
+    """نسخ احتياطي يدعم SQLite وPostgreSQL."""
+    uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    dest = os.path.join(BACKUPS_DIR, f'erp_{tag}_{ts}.db')
-    shutil.copy2(src, dest)
-    _prune_old_backups(25)
+    dest_dir = get_custom_backup_dir()
+    os.makedirs(dest_dir, exist_ok=True)
+
+    # SQLite
+    if 'sqlite' in uri:
+        src = resolve_sqlite_main_path()
+        # لو المسار من الـ config مش موجود، نحاول المسار الافتراضي
+        if not src or not os.path.isfile(src):
+            fallback = os.path.join(_INSTANCE_DIR, 'erp.db')
+            if os.path.isfile(fallback):
+                src = fallback
+            else:
+                # بحث عن أي ملف .db في مجلد التطبيق
+                for candidate in [
+                    os.path.join(_BASE_DIR, 'erp.db'),
+                    os.path.join(_BASE_DIR, 'instance', 'erp.db'),
+                ]:
+                    if os.path.isfile(candidate):
+                        src = candidate
+                        break
+        if not src or not os.path.isfile(src):
+            return None, f'ملف SQLite غير موجود — تحقق من مسار قاعدة البيانات في الإعدادات (المسار الحالي: {uri})'
+        dest = os.path.join(dest_dir, f'erp_{tag}_{ts}.db')
+        shutil.copy2(src, dest)
+        _prune_old_backups(25)
+        return dest, None
+
+    # PostgreSQL
+    if 'postgresql' in uri:
+        import subprocess
+        try:
+            from sqlalchemy.engine.url import make_url as _mu
+            u = _mu(uri)
+            dest = os.path.join(dest_dir, f'erp_{tag}_{ts}.sql')
+            env = os.environ.copy()
+            if u.password:
+                env['PGPASSWORD'] = str(u.password)
+            cmd = ['pg_dump',
+                   '-h', str(u.host or 'localhost'),
+                   '-p', str(u.port or 5432),
+                   '-U', str(u.username or 'postgres'),
+                   '-F', 'p',  # plain SQL
+                   '-f', dest,
+                   str(u.database)]
+            result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=120)
+            if result.returncode != 0:
+                return None, result.stderr[:300]
+            _prune_old_backups(25)
+            return dest, None
+        except FileNotFoundError:
+            return None, 'أداة pg_dump غير مثبتة على السيرفر'
+        except Exception as ex:
+            return None, str(ex)[:200]
+
+    return None, 'نوع قاعدة البيانات غير مدعوم للنسخ الاحتياطي'
+
+
+def sqlite_backup_to_folder(tag='manual'):
+    """للتوافق مع الكود القديم — يستخدم erp_backup داخلياً."""
+    dest, err = erp_backup(tag)
     return dest
 
 
@@ -1133,18 +1204,35 @@ def erp_sqlite_autobackup_start():
         return
     uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
     erp_sqlite_autobackup_start._started = True
-    if 'sqlite' not in uri or ':memory:' in uri:
+    # يدعم SQLite وPostgreSQL
+    if ':memory:' in uri:
+        return
+    if 'sqlite' not in uri and 'postgresql' not in uri:
         return
 
     def _loop():
-        time_module.sleep(120)
+        time_module.sleep(60)  # انتظر دقيقة بعد البدء
         while True:
             try:
                 with app.app_context():
-                    sqlite_backup_to_folder('auto')
+                    # جلب وقت النسخ الاحتياطي من الإعدادات
+                    gs = get_app_settings_dict(branch_id=None)
+                    backup_time = (gs.get('backup_daily_time') or '02:00').strip()
+                    try:
+                        bh, bm = [int(x) for x in backup_time.split(':')]
+                    except Exception:
+                        bh, bm = 2, 0
+                    now = datetime.now()
+                    # حساب الوقت التالي للنسخ
+                    next_run = now.replace(hour=bh, minute=bm, second=0, microsecond=0)
+                    if next_run <= now:
+                        next_run = next_run.replace(day=now.day + 1) if now.day < 28 else next_run + timedelta(days=1)
+                    wait_secs = (next_run - now).total_seconds()
+                time_module.sleep(max(60, wait_secs))
+                with app.app_context():
+                    erp_backup('auto')
             except Exception:
-                pass
-            time_module.sleep(86400)
+                time_module.sleep(3600)
 
     threading.Thread(target=_loop, daemon=True).start()
 
@@ -1304,6 +1392,25 @@ def license_admin_save_message():
     row.value = msg[:4000]
     db.session.commit()
     flash('تم حفظ رسالة انتهاء الاشتراك للعميل', 'success')
+    return redirect(url_for('license_admin'))
+
+
+@app.route('/license/admin/end-subscription', methods=['POST'])
+@login_required
+@developer_required
+def license_admin_end_subscription():
+    # مسح السريال المفعل من قاعدة البيانات — يُطلب سريال جديد عند الدخول
+    row = AppSetting.query.filter_by(key='license_serial').first()
+    if row:
+        db.session.delete(row)
+    row2 = AppSetting.query.filter_by(key='license_activated_at').first()
+    if row2:
+        db.session.delete(row2)
+    row3 = AppSetting.query.filter_by(key='license_expires_at').first()
+    if row3:
+        db.session.delete(row3)
+    db.session.commit()
+    flash('تم إنهاء الاشتراك الحالي — سيُطلب سريال جديد عند الدخول', 'success')
     return redirect(url_for('license_admin'))
 
 
@@ -2458,9 +2565,29 @@ def database_admin():
         main_sqlite=main_sqlite,
         custom_path=custom_path,
         is_sqlite=main_sqlite is not None,
+        is_postgres='postgresql' in (app.config.get('SQLALCHEMY_DATABASE_URI') or ''),
         backup_files=backup_files,
+        backup_daily_time=(gs.get('backup_daily_time') or '02:00'),
+        backup_custom_dir=(gs.get('backup_custom_dir') or ''),
         settings=gs,
     )
+
+
+@app.route('/settings/database/backup-settings', methods=['POST'])
+@login_required
+@admin_required
+def database_backup_settings():
+    backup_time = (request.form.get('backup_daily_time') or '02:00').strip()
+    backup_dir  = (request.form.get('backup_custom_dir') or '').strip()
+    for key, val in [('backup_daily_time', backup_time), ('backup_custom_dir', backup_dir)]:
+        row = AppSetting.query.filter_by(key=key).first()
+        if not row:
+            row = AppSetting(key=key)
+            db.session.add(row)
+        row.value = val
+    db.session.commit()
+    flash('تم حفظ إعدادات النسخ الاحتياطي التلقائي', 'success')
+    return redirect(url_for('database_admin'))
 
 
 @app.route('/settings/database/export')
@@ -2484,11 +2611,11 @@ def database_export():
 @login_required
 @admin_required
 def database_backup_now():
-    out = sqlite_backup_to_folder('manual')
+    out, err = erp_backup('manual')
     if out:
         flash(f'تم إنشاء نسخة احتياطية: {os.path.basename(out)}', 'success')
     else:
-        flash('تعذّر النسخ الاحتياطي (تحقق من نوع قاعدة البيانات)', 'error')
+        flash(f'تعذّر النسخ الاحتياطي: {err or "خطأ غير معروف"}', 'error')
     return redirect(url_for('database_admin'))
 
 
