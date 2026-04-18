@@ -71,34 +71,44 @@ app.config['SQLALCHEMY_BINDS'] = {
     'license_used': _sqlite_bind_uri('license_used.db'),
 }
 
-# ── Connection Pool (يمنع قطع الاتصال بقاعدة البيانات) ───
-# SQLite لا يدعم connection pool — نستخدم StaticPool لمنع تضارب الاتصالات
-_is_sqlite = 'sqlite' in db_url and ':memory:' not in db_url
+# ── Connection Pool ───────────────────────────────────────
+# SQLite لا يدعم pool_size/max_overflow — نفرق بين البيئتين
+_is_sqlite   = db_url.startswith('sqlite')
 _is_postgres = 'postgresql' in db_url
 
 if _is_sqlite:
     from sqlalchemy.pool import StaticPool
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'connect_args': {'check_same_thread': False},  # يسمح باستخدام نفس الاتصال من threads مختلفة
-        'poolclass': StaticPool,                        # اتصال واحد مشترك — يمنع التضارب
+        # اتصال واحد مشترك — يمنع تضارب الـ threads في SQLite
+        'connect_args': {'check_same_thread': False},
+        'poolclass': StaticPool,
     }
 elif _is_postgres:
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_recycle': 280,
-        'pool_pre_ping': True,
-        'pool_size': 10,
-        'max_overflow': 20,
-        'pool_timeout': 30,
-        'connect_args': {'connect_timeout': 10},
+        'pool_recycle':  280,   # تجديد الاتصال قبل timeout
+        'pool_pre_ping': True,  # اختبار الاتصال قبل كل query
+        'pool_size':     5,     # اتصالات دائمة (آمن على Railway free tier)
+        'max_overflow':  10,    # اتصالات إضافية عند الضغط
+        'pool_timeout':  30,
+        'connect_args':  {'connect_timeout': 10},
     }
 else:
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_pre_ping': True,
-    }
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True}
 
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
+
+# ── Error logging (يظهر الخطأ كاملاً في السجلات) ──────────
+import logging, traceback as _tb
+logging.basicConfig(level=logging.INFO)
+_logger = logging.getLogger(__name__)
+
+@app.errorhandler(500)
+def internal_error(e):
+    _logger.error("500 ERROR:\n" + _tb.format_exc())
+    db.session.rollback()
+    return "Internal Server Error — check logs", 500
 login_manager.login_view = 'login'
 login_manager.login_message = 'يرجى تسجيل الدخول للوصول لهذه الصفحة'
 
@@ -1651,9 +1661,6 @@ def new_purchase():
         prices = request.form.getlist('price[]')
 
         # ── Validation: لا حفظ بدون بيانات كاملة ──
-        if not supplier_id:
-            flash('يرجى اختيار المورد قبل الحفظ', 'error')
-            return redirect(url_for('new_purchase'))
         if not warehouse_id:
             flash('يرجى اختيار المخزن قبل الحفظ', 'error')
             return redirect(url_for('new_purchase'))
