@@ -2770,6 +2770,25 @@ def connected_users_page():
     users_list = q.order_by(User.username).all()
     return render_template('connected_users.html', users_list=users_list, online_before=online_before)
 
+@app.route('/settings/connected-users/<int:user_id>/force-logout', methods=['POST'])
+@login_required
+def connected_users_force_logout(user_id):
+    if not user_can(current_user, 'connected_users'):
+        flash('لا صلاحية', 'error')
+        return redirect(safe_home_url_for(current_user))
+    if user_id == current_user.id:
+        flash('لا يمكنك إخراج نفسك', 'error')
+        return redirect(url_for('connected_users_page'))
+    target = User.query.get_or_404(user_id)
+    # منع إخراج developer من غير developer
+    if target.role == 'developer' and current_user.role != 'developer':
+        flash('لا صلاحية لإخراج هذا المستخدم', 'error')
+        return redirect(url_for('connected_users_page'))
+    target.last_seen = None
+    db.session.commit()
+    flash(f'تم إخراج المستخدم {target.username} بنجاح', 'success')
+    return redirect(url_for('connected_users_page'))
+
 
 @app.route('/inventory/memos')
 @login_required
