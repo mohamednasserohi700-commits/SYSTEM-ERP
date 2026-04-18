@@ -1641,6 +1641,29 @@ def sale_detail(id):
     sale_has_return = SaleReturn.query.filter_by(sale_id=sale.id).first() is not None
     return render_template('sale_detail.html', sale=sale, sale_has_return=sale_has_return)
 
+@app.route('/sales/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_sale(id):
+    sale = Sale.query.get_or_404(id)
+    if not user_can(current_user, 'sales_purchases_delete'):
+        flash('ليس لديك صلاحية حذف الفواتير', 'error')
+        return redirect(url_for('sales'))
+    if SaleReturn.query.filter_by(sale_id=id).first():
+        flash('لا يمكن حذف الفاتورة لوجود مرتجع مرتبط بها', 'error')
+        return redirect(url_for('sales'))
+    for item in sale.items:
+        stock = Stock.query.filter_by(product_id=item.product_id, warehouse_id=sale.warehouse_id).first()
+        if stock:
+            stock.quantity += item.quantity
+    if sale.customer_id and sale.remaining and sale.remaining > 0:
+        customer = Customer.query.get(sale.customer_id)
+        if customer:
+            customer.balance -= sale.remaining
+    db.session.delete(sale)
+    db.session.commit()
+    flash(f'تم حذف الفاتورة {sale.invoice_number} بنجاح', 'success')
+    return redirect(url_for('sales'))
+
 # ===== PURCHASES =====
 @app.route('/purchases')
 @login_required
@@ -1721,6 +1744,32 @@ def purchase_detail(id):
     purchase = Purchase.query.get_or_404(id)
     purchase_has_return = PurchaseReturn.query.filter_by(purchase_id=purchase.id).first() is not None
     return render_template('purchase_detail.html', purchase=purchase, purchase_has_return=purchase_has_return)
+
+@app.route('/purchases/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_purchase(id):
+    purchase = Purchase.query.get_or_404(id)
+    # التحقق من الصلاحية
+    if not user_can(current_user, 'sales_purchases_delete'):
+        flash('ليس لديك صلاحية حذف الفواتير', 'error')
+        return redirect(url_for('purchases'))
+    # منع الحذف لو فيه مرتجع مرتبط
+    if PurchaseReturn.query.filter_by(purchase_id=id).first():
+        flash('لا يمكن حذف الفاتورة لوجود مرتجع مرتبط بها', 'error')
+        return redirect(url_for('purchases'))
+    # عكس تأثير الفاتورة على المخزن والرصيد
+    for item in purchase.items:
+        stock = Stock.query.filter_by(product_id=item.product_id, warehouse_id=purchase.warehouse_id).first()
+        if stock:
+            stock.quantity -= item.quantity
+    if purchase.supplier_id and purchase.remaining and purchase.remaining > 0:
+        supplier = Supplier.query.get(purchase.supplier_id)
+        if supplier:
+            supplier.balance -= purchase.remaining
+    db.session.delete(purchase)
+    db.session.commit()
+    flash(f'تم حذف فاتورة الشراء {purchase.invoice_number} بنجاح', 'success')
+    return redirect(url_for('purchases'))
 
 # ===== RETURNS =====
 @app.route('/returns/sale')
