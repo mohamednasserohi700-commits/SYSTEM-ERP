@@ -463,18 +463,7 @@
         </div>
     </nav>
 
-    <div class="sidebar-footer">
-        <div class="user-card">
-            <div class="user-avatar">{{ (current_user.full_name or current_user.username)[0] }}</div>
-            <div style="flex:1;min-width:0;">
-                <div class="user-name">{{ current_user.full_name or current_user.username }}</div>
-                <div class="user-role">{% if current_user.role=='developer' %}مطوّر النظام{% elif current_user.role=='admin' %}مدير النظام{% elif current_user.role=='manager' %}مشرف{% else %}مستخدم{% endif %}</div>
-            </div>
-            <div style="display:flex;gap:4px;margin-right:auto;">
-                <a href="{{ url_for('change_password') }}" class="icon-btn" title="تغيير كلمة المرور"><i class="fas fa-key"></i></a>
-            </div>
-        </div>
-    </div>
+
 </aside>
 
 <main class="main-content">
@@ -494,13 +483,17 @@
             </span>
             {% endif %}
             <button type="button" class="theme-toggle" onclick="erpToggleTheme()" title="تبديل الوضع الفاتح/الداكن"><i class="fas fa-adjust"></i></button>
-            <div class="erp-device-layout-tools" style="display:flex;align-items:center;gap:6px;flex-shrink:0;" title="يُحفظ على هذا الجهاز/المتصفح فقط — لا يتبع حساب المستخدم">
-                <select id="erpLayoutWidth" class="form-control" aria-label="عرض المحتوى" style="width:auto;min-width:104px;max-width:132px;padding:6px 8px;font-size:11px;border-radius:8px;cursor:pointer;">
-                    <option value="">عرض: افتراضي</option>
-                    {% for w in ['100%','1920px','1600px','1400px','1200px','1024px'] %}
-                    <option value="{{ w }}">{{ w }}</option>
-                    {% endfor %}
-                </select>
+            <div class="erp-device-layout-tools" style="display:flex;align-items:center;gap:4px;flex-shrink:0;" title="وضع العرض — يُحفظ على هذا الجهاز فقط">
+                <button type="button" id="btnLayoutPC" onclick="erpSetLayout('pc')" title="عرض PC"
+                    style="display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:7px;font-size:11.5px;font-weight:700;
+                           border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;transition:all .18s;">
+                    <i class="fas fa-desktop"></i> PC
+                </button>
+                <button type="button" id="btnLayoutPhone" onclick="erpSetLayout('phone')" title="عرض هاتف"
+                    style="display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:7px;font-size:11.5px;font-weight:700;
+                           border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;transition:all .18s;">
+                    <i class="fas fa-mobile-alt"></i> هاتف
+                </button>
             </div>
             {% block topbar_actions %}{% endblock %}
 
@@ -581,27 +574,43 @@
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 <script>
 (function(){
-    var KEY_W = 'erp_layout_max_width';
-    var selW = document.getElementById('erpLayoutWidth');
-    var root = document.documentElement;
-    if(selW){
-        try{
-            var sw = localStorage.getItem(KEY_W);
-            selW.value = sw || '';
-        }catch(e){ selW.value = ''; }
-        selW.addEventListener('change', function(){
-            var v = (this.value || '').trim();
-            try{
-                if(!v){
-                    localStorage.removeItem(KEY_W);
-                    root.style.removeProperty('--layout-max');
-                }else{
-                    localStorage.setItem(KEY_W, v);
-                    root.style.setProperty('--layout-max', v);
-                }
-            }catch(err){}
-        });
+    var KEY_W = 'erp_layout_mode';
+    var root  = document.documentElement;
+    var PC_W  = '1400px';
+    var PH_W  = '480px';
+    function applyLayout(mode){
+        if(mode === 'phone'){
+            root.style.setProperty('--layout-max', PH_W);
+        } else {
+            root.style.setProperty('--layout-max', PC_W);
+        }
+        var btnPC    = document.getElementById('btnLayoutPC');
+        var btnPhone = document.getElementById('btnLayoutPhone');
+        if(!btnPC || !btnPhone) return;
+        if(mode === 'phone'){
+            btnPhone.style.background = 'var(--accent-soft)';
+            btnPhone.style.borderColor = 'var(--accent)';
+            btnPhone.style.color = 'var(--accent)';
+            btnPC.style.background = 'transparent';
+            btnPC.style.borderColor = 'var(--border)';
+            btnPC.style.color = 'var(--text-muted)';
+        } else {
+            btnPC.style.background = 'var(--accent-soft)';
+            btnPC.style.borderColor = 'var(--accent)';
+            btnPC.style.color = 'var(--accent)';
+            btnPhone.style.background = 'transparent';
+            btnPhone.style.borderColor = 'var(--border)';
+            btnPhone.style.color = 'var(--text-muted)';
+        }
     }
+    window.erpSetLayout = function(mode){
+        try{ localStorage.setItem(KEY_W, mode); }catch(e){}
+        applyLayout(mode);
+    };
+    // تطبيق المحفوظ عند التحميل
+    var saved = 'pc';
+    try{ saved = localStorage.getItem(KEY_W) || 'pc'; }catch(e){}
+    applyLayout(saved);
 })();
 async function loadNotif() {
     try {
