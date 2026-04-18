@@ -72,16 +72,29 @@ app.config['SQLALCHEMY_BINDS'] = {
 }
 
 # ── Connection Pool (يمنع قطع الاتصال بقاعدة البيانات) ───
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_recycle': 280,       # تجديد الاتصال كل 280 ثانية (قبل timeout)
-    'pool_pre_ping': True,     # اختبار الاتصال قبل كل استعلام
-    'pool_size': 10,           # عدد اتصالات دائمة
-    'max_overflow': 20,        # اتصالات إضافية عند الضغط
-    'pool_timeout': 30,        # انتظر 30 ثانية قبل رمي خطأ
-    'connect_args': {
-        'connect_timeout': 10  # timeout الاتصال الأولي
-    } if 'postgresql' in db_url else {}
-}
+# SQLite لا يدعم connection pool — نستخدم StaticPool لمنع تضارب الاتصالات
+_is_sqlite = 'sqlite' in db_url and ':memory:' not in db_url
+_is_postgres = 'postgresql' in db_url
+
+if _is_sqlite:
+    from sqlalchemy.pool import StaticPool
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'connect_args': {'check_same_thread': False},  # يسمح باستخدام نفس الاتصال من threads مختلفة
+        'poolclass': StaticPool,                        # اتصال واحد مشترك — يمنع التضارب
+    }
+elif _is_postgres:
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_recycle': 280,
+        'pool_pre_ping': True,
+        'pool_size': 10,
+        'max_overflow': 20,
+        'pool_timeout': 30,
+        'connect_args': {'connect_timeout': 10},
+    }
+else:
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_pre_ping': True,
+    }
 
 
 db = SQLAlchemy(app)
