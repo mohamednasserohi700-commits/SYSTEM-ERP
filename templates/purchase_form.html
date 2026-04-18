@@ -57,8 +57,8 @@
                                         <div class="product-dropdown" style="display:none;position:absolute;top:100%;right:0;left:0;background:var(--secondary);border:1px solid var(--border);border-radius:8px;z-index:500;max-height:200px;overflow-y:auto;"></div>
                                     </div>
                                 </td>
-                                <td><input type="number" name="quantity[]" class="form-control qty" value="1" min="0.01" step="0.01" oninput="calcRow(this)"></td>
-                                <td><input type="number" name="price[]" class="form-control price" value="0" min="0" step="0.01" oninput="calcRow(this)"></td>
+                                <td><input type="number" name="quantity[]" class="form-control qty" value="1" min="0.01" step="0.01" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>
+                                <td><input type="number" name="price[]" class="form-control price" value="0" min="0" step="0.01" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>
                                 <td><input class="form-control row-total" readonly style="font-weight:700;color:var(--info);"></td>
                                 <td><button type="button" onclick="removeItem(this)" class="btn btn-danger btn-xs"><i class="fas fa-trash"></i></button></td>
                             </tr>
@@ -193,31 +193,6 @@ ErpProductLinePicker.bindAll('.product-search', {
     getWarehouseId: function () { return document.getElementById('warehouseId').value; },
     requireWarehouse: false,
     useCost: true
-});
-document.getElementById('purchaseForm').addEventListener('submit', function(e){
-    const rows = Array.from(document.querySelectorAll('#itemsBody .item-row'));
-    let hasSelectedProduct = false;
-    for (const row of rows) {
-        const pid = (row.querySelector('.pid').value || '').trim();
-        const qty = parseFloat(row.querySelector('.qty').value) || 0;
-        const price = parseFloat(row.querySelector('.price').value) || 0;
-        if (pid) {
-            hasSelectedProduct = true;
-            if (qty <= 0 || price < 0) {
-                alert('تحقق من الكمية والسعر: الكمية > 0 والسعر >= 0');
-                e.preventDefault();
-                return;
-            }
-        } else if (qty > 0 || price > 0) {
-            alert('يوجد سطر بدون اختيار صنف');
-            e.preventDefault();
-            return;
-        }
-    }
-    if (!hasSelectedProduct) {
-        alert('يجب اختيار صنف واحد على الأقل');
-        e.preventDefault();
-    }
 });
 </script>
 {% endblock %}
