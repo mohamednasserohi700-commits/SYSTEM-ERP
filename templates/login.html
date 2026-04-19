@@ -190,26 +190,46 @@
             color:#fff;
             margin-bottom:6px;
         }
-        .wa-link{
-            display:inline-flex;
-            align-items:center;
-            gap:8px;
-            margin-top:8px;
-            color: #25d366;
-            font-weight:700;
-            text-decoration:none;
-        }
-        .wa-link:hover{text-decoration:underline}
-        .fb-link{
-            display:inline-flex;
-            align-items:center;
-            gap:8px;
+        .about-actions{
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
             margin-top:10px;
-            color:#60a5fa;
-            font-weight:700;
-            text-decoration:none;
         }
-        .fb-link:hover{text-decoration:underline}
+        .about-btn{
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            padding:10px 12px;
+            border-radius: 14px;
+            border:1px solid rgba(255,255,255,.10);
+            background: rgba(255,255,255,.03);
+            text-decoration:none;
+            color:#fff;
+            font-weight:800;
+            font-size: 13px;
+            transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+        }
+        .about-btn:hover{
+            transform: translateY(-1px);
+            border-color: rgba(255,255,255,.18);
+            box-shadow: 0 18px 60px rgba(0,0,0,.25);
+        }
+        .about-btn.wa{border-color: rgba(37,211,102,.25)}
+        .about-btn.wa i{color:#25d366}
+        .about-btn.fb{border-color: rgba(96,165,250,.25)}
+        .about-btn.fb i{color:#60a5fa}
+
+        /* CSS-only toggles (works even if JS disabled) */
+        .sr-only{
+            position:absolute !important;
+            width:1px;height:1px;
+            padding:0;margin:-1px;
+            overflow:hidden;clip:rect(0,0,0,0);
+            white-space:nowrap;border:0;
+        }
+        #aboutToggle:checked + label + #aboutPopup{display:block}
+        #forgotToggle:checked ~ #forgotModal{display:flex}
 
         /* Forgot password modal */
         .modal{
@@ -681,16 +701,29 @@
             </div>
             <nav class="top-nav" id="topNav">
                 <a class="active" style="opacity:.9">الرئيسية</a>
-                <button id="aboutBtn" type="button">حول</button>
+                <input class="sr-only" type="checkbox" id="aboutToggle" />
+                <label for="aboutToggle" id="aboutBtn" style="display:inline-flex;align-items:center;gap:6px;">
+                    حول
+                </label>
                 <div class="about-popup" id="aboutPopup">
-                    <strong>للتواصل مع المسئول</strong>
-                    للاشتراك أو الاستفسارات<br>
-                    <a class="wa-link" href="https://wa.me/201103763082" target="_blank" rel="noopener">
-                        <i class="fab fa-whatsapp"></i> واتساب: 01103763082
-                    </a>
-                    <a class="fb-link" href="https://www.facebook.com/people/System-Makers/100095476066188/" target="_blank" rel="noopener">
-                        <i class="fab fa-facebook"></i> صفحة فيسبوك: System Makers
-                    </a>
+                    <strong>للتواصل والاستفسارات</strong>
+                    إذا احتجت مساعدة أو دعم فني أو اشتراك — تواصل معنا عبر:
+                    <div style="margin-top:6px;color:rgba(255,255,255,.70);font-size:12.5px;">
+                        واتساب: <b style="color:#fff">01103763082</b>
+                    </div>
+                    <div class="about-actions">
+                        <a class="about-btn wa" href="https://wa.me/201103763082" target="_blank" rel="noopener">
+                            <i class="fab fa-whatsapp"></i> واتساب
+                        </a>
+                        <a class="about-btn fb" href="https://www.facebook.com/people/System-Makers/100095476066188/" target="_blank" rel="noopener">
+                            <i class="fab fa-facebook"></i> فيسبوك
+                        </a>
+                    </div>
+                    <div style="margin-top:10px;">
+                        <label for="aboutToggle" class="about-btn" style="justify-content:center;width:100%;opacity:.9;">
+                            <i class="fas fa-times"></i> إغلاق
+                        </label>
+                    </div>
                 </div>
             </nav>
         </div>
@@ -742,9 +775,9 @@
                                 <input type="checkbox" id="remember" name="remember">
                                 تذكرني
                             </label>
-                            <button class="link" type="button" id="forgotBtn" style="background:none;border:none;padding:0;cursor:pointer;">
+                            <label class="link" for="forgotToggle" style="cursor:pointer;user-select:none;">
                                 هل نسيت كلمة المرور؟
-                            </button>
+                            </label>
                         </div>
 
                         <button type="submit" class="btn" id="submitBtn">
@@ -797,11 +830,14 @@
         </div>
     </div>
 
-    <div class="modal" id="forgotModal" role="dialog" aria-modal="true" aria-label="نسيت كلمة المرور" onclick="if(event.target===this)closeForgot()">
+    <input class="sr-only" type="checkbox" id="forgotToggle" />
+    <div class="modal" id="forgotModal" role="dialog" aria-modal="true" aria-label="نسيت كلمة المرور">
         <div class="modal-card">
             <div class="modal-head">
                 <div class="modal-title"><i class="fas fa-key" style="color:var(--accent)"></i> نسيت كلمة المرور</div>
-                <button class="modal-x" type="button" onclick="closeForgot()" aria-label="إغلاق"><i class="fas fa-times"></i></button>
+                <label class="modal-x" for="forgotToggle" role="button" tabindex="0" aria-label="إغلاق" style="display:flex;align-items:center;justify-content:center;">
+                    <i class="fas fa-times"></i>
+                </label>
             </div>
             <div class="modal-body">
                 لاسترجاع كلمة المرور أو إعادة تعيينها، تواصل مع الدعم وسيتم مساعدتك فورًا.
@@ -815,52 +851,29 @@
                     <a class="chip fb" href="https://www.facebook.com/people/System-Makers/100095476066188/" target="_blank" rel="noopener">
                         <i class="fab fa-facebook"></i> صفحة فيسبوك
                     </a>
+                    <label class="chip" for="forgotToggle" style="justify-content:center;">
+                        <i class="fas fa-times"></i> إغلاق
+                    </label>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        function openForgot(){
-            var m = document.getElementById('forgotModal');
-            if(!m) return;
-            m.classList.add('open');
-        }
-        function closeForgot(){
-            var m = document.getElementById('forgotModal');
-            if(!m) return;
-            m.classList.remove('open');
-        }
-
-        document.addEventListener('DOMContentLoaded', function(){
-            var aboutBtn = document.getElementById('aboutBtn');
-            var aboutPop = document.getElementById('aboutPopup');
-            var topNav   = document.getElementById('topNav');
-            var forgotBtn= document.getElementById('forgotBtn');
-
-            if(aboutBtn && aboutPop){
-                aboutBtn.addEventListener('click', function(e){
-                    e.preventDefault();
-                    e.stopPropagation();
-                    aboutPop.classList.toggle('open');
-                });
-            }
-            document.addEventListener('click', function(e){
-                if(!aboutPop) return;
-                if(topNav && topNav.contains(e.target)) return;
-                aboutPop.classList.remove('open');
-            });
-
-            if(forgotBtn){
-                forgotBtn.addEventListener('click', function(e){
-                    e.preventDefault();
-                    openForgot();
-                });
-            }
+        // CSS-only toggles handle open/close; JS adds convenience close-on-outside + ESC
+        document.addEventListener('click', function (e) {
+            var aboutToggle = document.getElementById('aboutToggle');
+            var topNav = document.getElementById('topNav');
+            if (!aboutToggle || !topNav) return;
+            if (topNav.contains(e.target)) return;
+            aboutToggle.checked = false;
         });
-
         document.addEventListener('keydown', function(e){
-            if(e.key === 'Escape') closeForgot();
+            if(e.key !== 'Escape') return;
+            var aboutToggle = document.getElementById('aboutToggle');
+            var forgotToggle = document.getElementById('forgotToggle');
+            if(aboutToggle) aboutToggle.checked = false;
+            if(forgotToggle) forgotToggle.checked = false;
         });
 
         (function(){
