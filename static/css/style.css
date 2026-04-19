@@ -72,6 +72,57 @@ table .ret-row td:first-child {
     vertical-align: middle;
 }
 
+/* ---- ERP Invoice Barcode (Corporate Minimal) ---- */
+.erp-barcode-wrap{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    flex-wrap:wrap;
+}
+.erp-barcode-field{
+    position:relative;
+    width:260px;
+    max-width:70vw;
+    flex:0 0 auto;
+}
+.erp-barcode-field i{
+    position:absolute;
+    right:12px;
+    top:50%;
+    transform:translateY(-50%);
+    color:var(--text-muted);
+    font-size:13px;
+    pointer-events:none;
+    opacity:.9;
+}
+.erp-barcode-input{
+    padding-right:34px;
+    height:36px;
+}
+.erp-barcode-status{
+    display:none;
+    margin:10px 14px 14px;
+    padding:10px 12px;
+    border-radius:12px;
+    font-size:13px;
+    line-height:1.5;
+    border:1px solid var(--border);
+    background:rgba(255,255,255,.03);
+    color:var(--text-muted);
+}
+.erp-barcode-status.is-error{
+    display:block;
+    border-color:rgba(239,68,68,.35);
+    background:rgba(239,68,68,.08);
+    color:#fca5a5;
+}
+.erp-barcode-status.is-info{
+    display:block;
+    border-color:rgba(59,130,246,.30);
+    background:rgba(59,130,246,.08);
+    color:#93c5fd;
+}
+
 /* ================================================================
    RESPONSIVE — TABLET  (max 900px)
    ================================================================ */
