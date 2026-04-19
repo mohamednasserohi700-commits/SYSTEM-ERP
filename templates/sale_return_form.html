@@ -25,7 +25,13 @@
     <div class="card" style="margin-bottom:20px;">
         <div class="card-header">
             <div class="card-title"><i class="fas fa-list"></i> الأصناف المرتجعة</div>
-            <button type="button" onclick="addReturnRow()" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> إضافة صنف</button>
+            <div class="erp-barcode-wrap">
+                <div class="erp-barcode-field">
+                    <i class="fas fa-barcode"></i>
+                    <input type="text" id="barcodeInput" class="form-control erp-barcode-input" placeholder="امسح/أدخل باركود" autocomplete="off">
+                </div>
+                <button type="button" onclick="addReturnRow()" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> إضافة صنف</button>
+            </div>
         </div>
         <div class="table-container"><table>
             <thead><tr><th style="width:32%">الصنف</th><th style="width:11%">كمية البيع</th><th style="width:11%">الكمية المرتجعة</th><th style="width:11%">السعر</th><th style="width:9%">خصم بيع%</th><th style="width:9%">خصم إضافي%</th><th style="width:11%">الإجمالي</th><th style="width:3%"></th></tr></thead>
@@ -48,6 +54,7 @@
                 </tr>
             </tbody>
         </table></div>
+        <div id="barcodeStatus" class="erp-barcode-status"></div>
     </div>
 
     <div style="display:flex;gap:10px;justify-content:flex-end;">
@@ -60,6 +67,7 @@
 
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/product_line_picker.js') }}"></script>
+<script src="{{ url_for('static', filename='js/invoice_barcode.js') }}"></script>
 <script>
 var SALES_RETURN_META = [];
 try {
@@ -143,5 +151,16 @@ function removeRow(btn) {
         ErpProductLinePicker.bind(inp, pickerOpts);
     });
 })();
+
+ErpInvoiceBarcode.bind('#barcodeInput', {
+    itemsBodyId: 'returnItems',
+    rowSelector: 'tr.ret-row',
+    statusSelector: '#barcodeStatus',
+    getWarehouseId: function () { return ''; },
+    requireWarehouse: false,
+    useCost: false,
+    autoFocus: true,
+    addRow: function () { if (typeof window.addReturnRow === 'function') window.addReturnRow(); }
+});
 </script>
 {% endblock %}
