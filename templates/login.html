@@ -7,343 +7,425 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body { min-height: 100%; }
-        body {
-            font-family: 'Cairo', sans-serif;
-            background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 25%, #2d5a94 50%, #1e3a5f 75%, #0f172a 100%);
-            background-size: 400% 400%;
-            animation: gradientShift 15s ease infinite;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            color: #111827;
-            padding: 24px 16px 20px;
-            overflow-x: hidden;
-            overflow-y: auto;
+        *{box-sizing:border-box;margin:0;padding:0}
+        html,body{min-height:100%;height:100%}
+        body{
+            font-family:'Cairo',sans-serif;
+            background:#0d1b2e;
+            min-height:100vh;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            padding:20px 16px;
+            overflow-x:hidden;
+            overflow-y:auto;
         }
 
-        @keyframes gradientShift {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-
-        body::before {
-            content: '';
-            position: fixed; inset: 0;
+        /* خلفية متحركة */
+        body::before{
+            content:'';
+            position:fixed;inset:0;
             background:
-                radial-gradient(ellipse 80% 60% at 15% 20%, rgba(59,130,246,0.15) 0%, transparent 60%),
-                radial-gradient(ellipse 70% 70% at 85% 85%, rgba(16,185,129,0.1) 0%, transparent 60%),
-                radial-gradient(ellipse 60% 50% at 50% 10%, rgba(139,92,246,0.08) 0%, transparent 60%);
-            pointer-events: none;
-            z-index: 0;
-            animation: floatShift 20s ease-in-out infinite;
+                radial-gradient(ellipse 70% 50% at 15% 20%, rgba(29,78,140,0.35) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 60% at 85% 80%, rgba(15,52,96,0.4) 0%, transparent 55%),
+                radial-gradient(ellipse 40% 40% at 50% 50%, rgba(20,40,80,0.2) 0%, transparent 70%);
+            pointer-events:none;
+            z-index:0;
         }
 
-        @keyframes floatShift {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.8; }
-        }
-
-        body::after {
-            content: '';
-            position: fixed; inset: 0;
+        /* نقاط زخرفية */
+        body::after{
+            content:'';
+            position:fixed;inset:0;
             background-image:
-                radial-gradient(circle 1px at 20% 30%, rgba(255,255,255,0.3), rgba(255,255,255,0) 1px),
-                radial-gradient(circle 1px at 60% 70%, rgba(255,255,255,0.2), rgba(255,255,255,0) 1px),
-                radial-gradient(circle 1px at 80% 20%, rgba(255,255,255,0.25), rgba(255,255,255,0) 1px);
-            background-size: 500px 500px;
-            pointer-events: none;
-            z-index: 0;
-            animation: twinkle 8s ease-in-out infinite;
+                radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size:40px 40px;
+            pointer-events:none;
+            z-index:0;
         }
 
-        @keyframes twinkle {
-            0%, 100% { opacity: 0.5; }
-            50% { opacity: 1; }
+        .login-wrapper{
+            width:100%;
+            max-width:900px;
+            position:relative;
+            z-index:1;
+            display:grid;
+            grid-template-columns:1fr 1.15fr;
+            border-radius:20px;
+            overflow:hidden;
+            box-shadow:0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06);
+            animation:fadeUp 0.5s ease both;
         }
 
-        .page-inner {
-            width: 100%;
-            max-width: 820px;
-            position: relative;
-            z-index: 1;
-            display: flex;
-            flex-direction: column;
-            border-radius: 12px;
-            overflow: visible;
-            box-shadow: 0 8px 40px rgba(30,58,95,0.12);
+        @keyframes fadeUp{
+            from{opacity:0;transform:translateY(24px)}
+            to{opacity:1;transform:translateY(0)}
         }
 
-        /* ── Top bar ── */
-        .top-bar {
-            background: #1e3a5f;
-            padding: 10px 28px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-radius: 12px 12px 0 0;
+        /* ── الجانب الأيمن (ديكوري) ── */
+        .decor-side{
+            background:linear-gradient(160deg, #1a3a6b 0%, #0f2847 40%, #091d38 100%);
+            padding:48px 36px;
+            display:flex;
+            flex-direction:column;
+            justify-content:space-between;
+            position:relative;
+            overflow:hidden;
         }
-        .top-bar .brand { display: flex; align-items: center; gap: 10px; }
-        .top-bar .brand-logo {
-            background: #fff; color: #1e3a5f; font-weight: 900;
-            font-size: 13px; padding: 4px 8px; border-radius: 6px; letter-spacing: 1px;
+        .decor-side::before{
+            content:'';
+            position:absolute;
+            top:-80px;right:-80px;
+            width:260px;height:260px;
+            border-radius:50%;
+            background:rgba(45,90,180,0.15);
+            pointer-events:none;
         }
-        .top-bar .brand-title {
-            font-family: 'Tajawal', sans-serif; color: #fff; font-size: 16px; font-weight: 700;
-        }
-        .top-nav { display: flex; gap: 4px; position: relative; }
-        .top-nav a {
-            color: rgba(255,255,255,0.75); font-size: 13px; padding: 4px 10px;
-            border-radius: 6px; text-decoration: none; cursor: pointer; transition: background 0.15s;
-        }
-        .top-nav a:hover { background: rgba(255,255,255,0.12); }
-        .top-nav a.active { background: rgba(255,255,255,0.18); color: #fff; }
-
-        /* ── About popup ── */
-        .about-popup {
-            display: none;
-            position: absolute; top: 36px; left: 0;
-            background: #fff; border-radius: 10px;
-            border: 1px solid #e5e7eb;
-            box-shadow: 0 8px 32px rgba(30,58,95,0.15);
-            padding: 16px 20px; min-width: 260px; z-index: 100;
-            font-size: 13px; color: #374151; line-height: 1.8; text-align: right;
-        }
-        .about-popup.open { display: block; }
-        .about-popup strong { color: #1e3a5f; display: block; margin-bottom: 6px; font-size: 14px; }
-        .about-popup .wa-link {
-            display: inline-flex; align-items: center; gap: 6px;
-            margin-top: 8px; color: #25d366; font-weight: 700;
-            text-decoration: none; font-size: 13px;
-        }
-        .about-popup .wa-link i { font-size: 18px; }
-
-        /* ── Main login area ── */
-        .login-main { display: flex; background: #fff; }
-
-        .login-side {
-            flex: 1;
-            background: linear-gradient(145deg, #1e3a5f 0%, #2d5a94 100%);
-            padding: 40px 32px;
-            display: flex; flex-direction: column;
-            justify-content: center; align-items: center;
-            min-height: 380px;
-        }
-        .side-icon {
-            width: 72px; height: 72px;
-            background: rgba(255,255,255,0.15);
-            border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            margin-bottom: 20px;
-            border: 2px solid rgba(255,255,255,0.25);
-            font-size: 32px; color: #fff;
-        }
-        .side-title {
-            font-family: 'Tajawal', sans-serif; color: #fff;
-            font-size: 20px; font-weight: 800;
-            text-align: center; margin-bottom: 10px; line-height: 1.3;
-        }
-        .side-sub {
-            color: rgba(255,255,255,0.65); font-size: 13px;
-            text-align: center; line-height: 1.6; max-width: 200px;
-        }
-        .side-dots { display: flex; gap: 6px; margin-top: 28px; }
-        .side-dots span { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.3); }
-        .side-dots span.active { background: #fff; }
-
-        .login-form-area {
-            flex: 1.2; padding: 36px 32px;
-            display: flex; flex-direction: column; justify-content: center;
-        }
-        .form-head { margin-bottom: 22px; }
-        .form-head h2 {
-            font-family: 'Tajawal', sans-serif; font-size: 22px;
-            font-weight: 800; color: #1e3a5f; margin-bottom: 4px;
+        .decor-side::after{
+            content:'';
+            position:absolute;
+            bottom:-60px;left:-60px;
+            width:200px;height:200px;
+            border-radius:50%;
+            background:rgba(20,60,140,0.12);
+            pointer-events:none;
         }
 
-        .form-group { margin-bottom: 16px; }
-        .form-label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 7px; }
-        .input-wrap { position: relative; }
-        .input-wrap i {
-            position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-            color: #9ca3af; font-size: 14px; pointer-events: none;
+        .decor-logo{
+            display:flex;align-items:center;gap:12px;
+            position:relative;z-index:1;
         }
-        .form-control {
-            width: 100%; padding: 10px 38px 10px 12px;
-            border: 1.5px solid #e5e7eb; border-radius: 8px;
-            font-family: 'Cairo', sans-serif; font-size: 13px;
-            color: #111827; background: #fafafa;
-            transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
-            outline: none;
+        .decor-logo .logo-box{
+            background:linear-gradient(135deg,#f59e0b,#d97706);
+            color:#0d1b2e;
+            font-weight:900;font-size:14px;
+            padding:6px 10px;border-radius:8px;
+            letter-spacing:1.5px;
         }
-        .form-control:focus {
-            border-color: #2d5a94; background: #fff;
-            box-shadow: 0 0 0 3px rgba(45,90,148,0.1);
+        .decor-logo .logo-name{
+            font-family:'Tajawal',sans-serif;
+            color:#fff;font-size:17px;font-weight:700;
         }
 
-        .remember-wrap {
-            display: flex; align-items: center; gap: 8px;
-            margin-bottom: 18px; font-size: 13px; color: #374151;
+        .decor-main{
+            position:relative;z-index:1;
+            text-align:center;
         }
-        .remember-wrap input[type=checkbox] {
-            width: 15px; height: 15px; accent-color: #1e3a5f; cursor: pointer;
+        .decor-icon-wrap{
+            width:90px;height:90px;
+            background:rgba(255,255,255,0.06);
+            border:1px solid rgba(255,255,255,0.12);
+            border-radius:50%;
+            display:flex;align-items:center;justify-content:center;
+            margin:0 auto 24px;
+            font-size:38px;color:rgba(255,255,255,0.85);
+            position:relative;
+        }
+        .decor-icon-wrap::after{
+            content:'';
+            position:absolute;inset:-8px;
+            border-radius:50%;
+            border:1px solid rgba(245,158,11,0.2);
+        }
+        .decor-title{
+            font-family:'Tajawal',sans-serif;
+            color:#fff;font-size:22px;font-weight:800;
+            line-height:1.35;margin-bottom:12px;
+        }
+        .decor-sub{
+            color:rgba(255,255,255,0.55);
+            font-size:13px;line-height:1.7;
+            max-width:220px;margin:0 auto;
         }
 
-        .btn-login {
-            width: 100%; padding: 12px;
-            background: #1e3a5f; color: #fff; border: none; border-radius: 8px;
-            font-family: 'Cairo', sans-serif; font-size: 14px; font-weight: 700;
-            cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
-            transition: background 0.2s, transform 0.15s;
+        .decor-features{
+            position:relative;z-index:1;
+            display:flex;flex-direction:column;gap:10px;
         }
-        .btn-login:hover { background: #2d5a94; transform: translateY(-1px); }
-
-        /* ── Alert ── */
-        .alert {
-            padding: 12px 14px; border-radius: 8px; margin-bottom: 16px;
-            font-size: 13px; display: flex; align-items: flex-start; gap: 10px;
-            background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); color: #dc2626;
-            line-height: 1.45;
+        .feat-item{
+            display:flex;align-items:center;gap:10px;
+            color:rgba(255,255,255,0.65);
+            font-size:12.5px;
         }
-        .alert i { margin-top: 2px; flex-shrink: 0; }
-
-        /* ── Footer ── */
-        .form-footer {
-            background: #f8fafc; border-top: 1px solid #e5e7eb;
-            padding: 12px 32px; text-align: center;
-            font-size: 11.5px; color: #9ca3af;
-            border-radius: 0 0 12px 12px;
+        .feat-item i{
+            width:28px;height:28px;
+            background:rgba(245,158,11,0.12);
+            border:1px solid rgba(245,158,11,0.2);
+            border-radius:7px;
+            display:flex;align-items:center;justify-content:center;
+            font-size:12px;color:#f59e0b;
+            flex-shrink:0;
         }
-        .form-footer strong { color: #374151; }
 
-        .footer-note {
-            text-align: center; margin-top: 14px;
-            font-size: 11px; color: #6b7280;
-            position: relative; z-index: 1;
+        /* ── الجانب الأيسر (الفورم) ── */
+        .form-side{
+            background:#ffffff;
+            padding:44px 40px;
+            display:flex;
+            flex-direction:column;
+            justify-content:center;
+        }
+
+        .form-header{margin-bottom:28px;}
+        .form-header .greet{
+            font-size:11px;font-weight:700;
+            color:#f59e0b;letter-spacing:2px;
+            text-transform:uppercase;margin-bottom:6px;
+        }
+        .form-header h2{
+            font-family:'Tajawal',sans-serif;
+            font-size:26px;font-weight:800;
+            color:#0f2847;margin-bottom:4px;
+        }
+        .form-header p{
+            font-size:13px;color:#6b7280;line-height:1.5;
+        }
+
+        .alert-box{
+            padding:11px 14px;
+            border-radius:10px;
+            margin-bottom:18px;
+            font-size:13px;
+            display:flex;align-items:flex-start;gap:10px;
+            background:rgba(239,68,68,0.07);
+            border:1px solid rgba(239,68,68,0.2);
+            color:#dc2626;
+            line-height:1.45;
+        }
+        .alert-box i{margin-top:1px;flex-shrink:0;}
+
+        .form-group{margin-bottom:18px;}
+        .form-label{
+            display:block;
+            font-size:12px;font-weight:700;
+            color:#374151;margin-bottom:7px;
+            letter-spacing:0.3px;
+        }
+        .input-wrap{position:relative;}
+        .input-wrap .inp-icon{
+            position:absolute;right:13px;top:50%;
+            transform:translateY(-50%);
+            color:#9ca3af;font-size:14px;
+            pointer-events:none;
+            transition:color 0.2s;
+        }
+        .inp-field{
+            width:100%;
+            padding:11px 40px 11px 14px;
+            border:1.5px solid #e5e7eb;
+            border-radius:10px;
+            font-family:'Cairo',sans-serif;
+            font-size:13.5px;
+            color:#111827;
+            background:#f9fafb;
+            transition:border-color 0.2s, background 0.2s, box-shadow 0.2s;
+            outline:none;
+        }
+        .inp-field:focus{
+            border-color:#1a3a6b;
+            background:#fff;
+            box-shadow:0 0 0 3px rgba(26,58,107,0.1);
+        }
+        .inp-field:focus ~ .inp-icon{color:#1a3a6b;}
+
+        .form-row-extras{
+            display:flex;align-items:center;justify-content:space-between;
+            margin-bottom:22px;
+        }
+        .remember-label{
+            display:flex;align-items:center;gap:7px;
+            font-size:13px;color:#4b5563;cursor:pointer;
+        }
+        .remember-label input[type=checkbox]{
+            width:15px;height:15px;
+            accent-color:#1a3a6b;cursor:pointer;
+        }
+
+        .btn-submit{
+            width:100%;padding:13px;
+            background:linear-gradient(135deg,#1a3a6b 0%,#2d5a94 100%);
+            color:#fff;border:none;border-radius:10px;
+            font-family:'Cairo',sans-serif;
+            font-size:14px;font-weight:700;
+            cursor:pointer;
+            display:flex;align-items:center;justify-content:center;gap:9px;
+            transition:transform 0.15s, box-shadow 0.2s;
+            box-shadow:0 4px 16px rgba(26,58,107,0.3);
+            letter-spacing:0.3px;
+        }
+        .btn-submit:hover{
+            transform:translateY(-1px);
+            box-shadow:0 6px 22px rgba(26,58,107,0.4);
+        }
+        .btn-submit:active{transform:translateY(0);}
+
+        .form-footer{
+            margin-top:28px;
+            padding-top:18px;
+            border-top:1px solid #f3f4f6;
+            text-align:center;
+            font-size:11.5px;color:#9ca3af;
+        }
+        .form-footer strong{color:#6b7280;}
+
+        .about-bar{
+            margin-top:12px;
+            text-align:center;
+            font-size:12px;
+        }
+        .about-link{
+            color:#9ca3af;text-decoration:none;cursor:pointer;
+            transition:color 0.15s;
+        }
+        .about-link:hover{color:#1a3a6b;}
+
+        /* About popup */
+        .about-overlay{
+            display:none;
+            position:fixed;inset:0;
+            background:rgba(0,0,0,0.4);
+            z-index:200;
+            align-items:center;justify-content:center;
+        }
+        .about-overlay.open{display:flex;}
+        .about-card{
+            background:#fff;border-radius:16px;
+            padding:28px 32px;
+            max-width:360px;width:90%;
+            box-shadow:0 20px 60px rgba(0,0,0,0.3);
+            text-align:center;
+            animation:fadeUp 0.25s ease both;
+        }
+        .about-card h3{
+            font-family:'Tajawal',sans-serif;
+            font-size:18px;font-weight:800;
+            color:#0f2847;margin-bottom:8px;
+        }
+        .about-card p{font-size:13px;color:#4b5563;line-height:1.7;margin-bottom:14px;}
+        .wa-btn{
+            display:inline-flex;align-items:center;gap:8px;
+            padding:10px 20px;
+            background:#25d366;color:#fff;
+            border-radius:10px;text-decoration:none;
+            font-weight:700;font-size:13px;
+            transition:background 0.2s;
+        }
+        .wa-btn:hover{background:#1ebb58;}
+        .about-close{
+            display:block;margin-top:12px;
+            font-size:12px;color:#9ca3af;
+            cursor:pointer;background:none;border:none;
+        }
+
+        @media(max-width:680px){
+            .login-wrapper{grid-template-columns:1fr;}
+            .decor-side{display:none;}
+            .form-side{padding:32px 24px;}
         }
     </style>
 </head>
 <body>
-    <div class="page-inner">
 
-        <!-- Top bar -->
-        <div class="top-bar">
-            <div class="brand">
-                <span class="brand-logo">ERP</span>
-                <span class="brand-title">{{ app_brand_title | default('نظام محاسبي ERP المتكامل') }}</span>
-            </div>
-            <nav class="top-nav">
-                <a class="active">الرئيسية</a>
-                <a id="aboutBtn" onclick="toggleAbout(event)">حول</a>
-                <div class="about-popup" id="aboutPopup">
-                    <strong>للتواصل مع المسئول</strong>
-                    للاشتراك أو الاستفسارات<br>
-                    <a class="wa-link" href="https://wa.me/201103763082" target="_blank">
-                        <i class="fab fa-whatsapp"></i> واتساب: 01103763082
-                    </a>
-                </div>
-            </nav>
+<div class="login-wrapper">
+
+    <!-- الجانب الديكوري -->
+    <div class="decor-side">
+        <div class="decor-logo">
+            <span class="logo-box">ERP</span>
+            <span class="logo-name">{{ app_brand_title | default('النظام المحاسبي') }}</span>
         </div>
 
-        <!-- Login split layout -->
-        <div class="login-main">
-
-            <!-- Left decorative side -->
-            <div class="login-side">
-                <div class="side-icon"><i class="fas fa-lock"></i></div>
-                <div class="side-title">مرحباً بك في النظام المحاسبي المتكامل</div>
-                <div class="side-sub">إدارة أعمالك ومحاسبتك بشكل ذكي ومتكامل من مكان واحد</div>
-                <div class="side-dots">
-                    <span class="active"></span><span></span><span></span>
-                </div>
+        <div class="decor-main">
+            <div class="decor-icon-wrap">
+                <i class="fas fa-shield-alt"></i>
             </div>
-
-            <!-- Right form side -->
-            <div class="login-form-area">
-                <div class="form-head">
-                    <h2>مرحباً بعودتك 👋</h2>
-                </div>
-
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% for category, message in messages %}
-                    <div class="alert"><i class="fas fa-exclamation-circle"></i><span>{{ message }}</span></div>
-                    {% endfor %}
-                {% endwith %}
-
-                <form method="POST">
-                    <div class="form-group">
-                        <label class="form-label">اسم المستخدم</label>
-                        <div class="input-wrap">
-                            <i class="fas fa-user"></i>
-                            <input type="text" name="username" class="form-control" placeholder="أدخل اسم المستخدم" required autofocus>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">كلمة المرور</label>
-                        <div class="input-wrap">
-                            <i class="fas fa-lock"></i>
-                            <input type="password" name="password" class="form-control" placeholder="أدخل كلمة المرور" required>
-                        </div>
-                    </div>
-                    <div class="remember-wrap">
-                        <input type="checkbox" id="remember" name="remember">
-                        <label for="remember">تذكرني؟</label>
-                    </div>
-                    <button type="submit" class="btn-login">
-                        <i class="fas fa-sign-in-alt"></i> دخول
-                    </button>
-                </form>
-            </div>
+            <div class="decor-title">نظام محاسبي متكامل وذكي</div>
+            <div class="decor-sub">إدارة أعمالك بكفاءة عالية من مكان واحد آمن وموثوق</div>
         </div>
 
-        <!-- Footer -->
-        <div class="form-footer">
-            برمجة: <strong>محمد ناصر عبدالله</strong> | <strong>System Makers © 2026</strong>
+        <div class="decor-features">
+            <div class="feat-item"><i class="fas fa-chart-line"></i> تقارير وتحليلات متقدمة</div>
+            <div class="feat-item"><i class="fas fa-boxes"></i> إدارة المخزون والمبيعات</div>
+            <div class="feat-item"><i class="fas fa-users"></i> إدارة العملاء والموردين</div>
+            <div class="feat-item"><i class="fas fa-lock"></i> بيانات محمية وآمنة</div>
         </div>
     </div>
 
-    <div class="footer-note"> </div>
+    <!-- جانب الفورم -->
+    <div class="form-side">
+        <div class="form-header">
+            <div class="greet">مرحباً بك</div>
+            <h2>تسجيل الدخول</h2>
+            <p>أدخل بياناتك للوصول إلى النظام</p>
+        </div>
 
-    <script>
-        function toggleAbout(e) {
-            e.stopPropagation();
-            document.getElementById('aboutPopup').classList.toggle('open');
-        }
-        document.addEventListener('click', function () {
-            document.getElementById('aboutPopup').classList.remove('open');
-        });
-        (function(){
-            function readCookie(name){
-                var m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()\\[\\]\\\\/+^]/g, '\\$&') + '=([^;]*)'));
-                return m ? decodeURIComponent(m[1]) : '';
-            }
-            function makeId(){
-                try{
-                    if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
-                }catch(e){}
-                return 'dev-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-            }
-            try{
-                var did = (localStorage.getItem('erp_device_id') || '').trim();
-                if (!did) did = (readCookie('erp_device_id') || '').trim();
-                if (!did) {
-                    did = makeId();
-                    localStorage.setItem('erp_device_id', did);
-                } else {
-                    localStorage.setItem('erp_device_id', did);
-                }
-                document.cookie = 'erp_device_id=' + encodeURIComponent(did) + '; path=/; max-age=31536000; samesite=lax';
-            }catch(e){
-                try{
-                    var fallback = makeId();
-                    document.cookie = 'erp_device_id=' + encodeURIComponent(fallback) + '; path=/; max-age=31536000; samesite=lax';
-                }catch(err){}
-            }
-        })();
-    </script>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+            <div class="alert-box">
+                <i class="fas fa-exclamation-circle"></i>
+                <span>{{ message }}</span>
+            </div>
+            {% endfor %}
+        {% endwith %}
+
+        <form method="POST">
+            <div class="form-group">
+                <label class="form-label">اسم المستخدم</label>
+                <div class="input-wrap">
+                    <input type="text" name="username" class="inp-field" placeholder="أدخل اسم المستخدم" required autofocus autocomplete="username">
+                    <i class="fas fa-user inp-icon"></i>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">كلمة المرور</label>
+                <div class="input-wrap">
+                    <input type="password" name="password" class="inp-field" placeholder="أدخل كلمة المرور" required autocomplete="current-password" id="pwdField">
+                    <i class="fas fa-eye inp-icon" id="pwdToggle" style="pointer-events:all;cursor:pointer;" onclick="togglePwd()"></i>
+                </div>
+            </div>
+            <div class="form-row-extras">
+                <label class="remember-label">
+                    <input type="checkbox" name="remember" id="remember">
+                    تذكرني
+                </label>
+            </div>
+            <button type="submit" class="btn-submit">
+                <i class="fas fa-sign-in-alt"></i> دخول إلى النظام
+            </button>
+        </form>
+
+        <div class="form-footer">
+            <strong>{{ app_company | default('System Makers') }}</strong> &copy; 2026 — جميع الحقوق محفوظة
+        </div>
+        <div class="about-bar">
+            <a class="about-link" onclick="document.getElementById('aboutOverlay').classList.add('open')">
+                <i class="fas fa-info-circle"></i> حول النظام والتواصل
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- About overlay -->
+<div class="about-overlay" id="aboutOverlay" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="about-card">
+        <h3>للتواصل مع المسؤول</h3>
+        <p>للاشتراك أو الاستفسارات أو الدعم الفني، تواصل معنا مباشرة</p>
+        <a class="wa-btn" href="https://wa.me/201103763082" target="_blank">
+            <i class="fab fa-whatsapp"></i> واتساب: 01103763082
+        </a>
+        <button class="about-close" onclick="document.getElementById('aboutOverlay').classList.remove('open')">
+            إغلاق
+        </button>
+    </div>
+</div>
+
+<script>
+function togglePwd(){
+    var f=document.getElementById('pwdField');
+    var i=document.getElementById('pwdToggle');
+    if(f.type==='password'){f.type='text';i.className='fas fa-eye-slash inp-icon';}
+    else{f.type='password';i.className='fas fa-eye inp-icon';}
+}
+</script>
 </body>
 </html>
