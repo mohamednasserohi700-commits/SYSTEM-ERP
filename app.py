@@ -1535,7 +1535,11 @@ def api_product_search():
     warehouse_id = request.args.get('warehouse_id')
     query = Product.query.filter_by(is_active=True)
     if q:
-        query = query.filter(db.or_(Product.name.contains(q), Product.code.contains(q)))
+        query = query.filter(db.or_(
+            Product.name.contains(q),
+            Product.code.contains(q),
+            Product.barcode.contains(q),
+        ))
     products = query.order_by(Product.name).limit(80).all()
     result = []
     for p in products:
@@ -1546,6 +1550,35 @@ def api_product_search():
         result.append({'id': p.id, 'code': p.code, 'name': p.name,
                        'price': p.sell_price, 'cost': p.cost_price, 'unit': p.unit, 'qty': qty})
     return jsonify(result)
+
+
+@app.route('/api/product/by_barcode')
+@login_required
+def api_product_by_barcode():
+    barcode = (request.args.get('barcode') or '').strip()
+    warehouse_id = request.args.get('warehouse_id')
+    if not barcode:
+        return jsonify({'error': 'barcode_required'}), 400
+
+    p = Product.query.filter_by(is_active=True).filter(Product.barcode == barcode).first()
+    if not p:
+        return jsonify({'error': 'not_found'}), 404
+
+    qty = 0
+    if warehouse_id:
+        stock = Stock.query.filter_by(product_id=p.id, warehouse_id=warehouse_id).first()
+        qty = stock.quantity if stock else 0
+
+    return jsonify({
+        'id': p.id,
+        'code': p.code,
+        'barcode': p.barcode,
+        'name': p.name,
+        'price': p.sell_price,
+        'cost': p.cost_price,
+        'unit': p.unit,
+        'qty': qty,
+    })
 
 # ===== CUSTOMERS =====
 @app.route('/customers')
