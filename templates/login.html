@@ -316,6 +316,15 @@
             font-size:12px;color:#9ca3af;
             cursor:pointer;background:none;border:none;
         }
+        .fb-btn{
+            display:inline-flex;align-items:center;gap:8px;
+            padding:10px 20px;
+            background:#1877f2;color:#fff;
+            border-radius:10px;text-decoration:none;
+            font-weight:700;font-size:13px;
+            transition:background 0.2s;
+        }
+        .fb-btn:hover{background:#1565d8;}
 
         @media(max-width:680px){
             .login-wrapper{grid-template-columns:1fr;}
@@ -408,11 +417,19 @@
 <!-- About overlay -->
 <div class="about-overlay" id="aboutOverlay" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="about-card">
-        <h3>للتواصل مع المسؤول</h3>
-        <p>للاشتراك أو الاستفسارات أو الدعم الفني، تواصل معنا مباشرة</p>
-        <a class="wa-btn" href="https://wa.me/201103763082" target="_blank">
-            <i class="fab fa-whatsapp"></i> واتساب: 01103763082
-        </a>
+        <div style="width:54px;height:54px;background:linear-gradient(135deg,#1a3a6b,#2d5a94);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:22px;color:#fff;">
+            <i class="fas fa-code"></i>
+        </div>
+        <h3>System Makers</h3>
+        <p>للاستفسارات والدعم الفني والاشتراك تواصل معنا</p>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:4px;">
+            <a class="wa-btn" href="https://wa.me/201103763082" target="_blank">
+                <i class="fab fa-whatsapp"></i> واتساب: 01103763082
+            </a>
+            <a class="fb-btn" href="https://www.facebook.com/profile.php?id=100095476066188" target="_blank">
+                <i class="fab fa-facebook-f"></i> صفحتنا على فيسبوك
+            </a>
+        </div>
         <button class="about-close" onclick="document.getElementById('aboutOverlay').classList.remove('open')">
             إغلاق
         </button>
