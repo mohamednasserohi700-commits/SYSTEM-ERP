@@ -37,13 +37,7 @@
             <div class="card">
                 <div class="card-header">
                     <div class="card-title"><i class="fas fa-list"></i> الأصناف</div>
-                    <div class="erp-barcode-wrap">
-                        <div class="erp-barcode-field">
-                            <i class="fas fa-barcode"></i>
-                            <input type="text" id="barcodeInput" class="form-control erp-barcode-input" placeholder="امسح/أدخل باركود" autocomplete="off">
-                        </div>
-                        <button type="button" onclick="addItem()" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> إضافة صنف</button>
-                    </div>
+                    <button type="button" onclick="addItem()" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> إضافة صنف</button>
                 </div>
                 <div class="table-container">
                     <table>
@@ -57,10 +51,17 @@
                         <tbody id="itemsBody">
                             <tr class="item-row">
                                 <td>
-                                    <div style="position:relative">
-                                        <input type="text" class="form-control product-search" placeholder="ابحث عن صنف..." autocomplete="off">
+                                    <div class="product-combo-wrap" style="position:relative;">
+                                        <div style="position:relative;">
+                                            <input type="text" class="form-control product-search"
+                                                placeholder="ابحث أو اختر صنف..."
+                                                autocomplete="off"
+                                                style="padding-left:32px;"
+                                                onfocus="openProductDropdown(this)">
+                                            <i class="fas fa-chevron-down" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px;pointer-events:none;"></i>
+                                        </div>
                                         <input type="hidden" name="product_id[]" class="pid">
-                                        <div class="product-dropdown" style="display:none;position:absolute;top:100%;right:0;left:0;background:var(--secondary);border:1px solid var(--border);border-radius:8px;z-index:500;max-height:200px;overflow-y:auto;"></div>
+                                        <div class="product-dropdown" style="display:none;position:absolute;top:100%;right:0;left:0;min-width:320px;background:var(--secondary);border:1px solid var(--border);border-radius:10px;z-index:600;max-height:260px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);margin-top:3px;"></div>
                                     </div>
                                 </td>
                                 <td><input type="number" name="quantity[]" class="form-control qty" value="1" min="0.01" step="0.01" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>
@@ -71,7 +72,6 @@
                         </tbody>
                     </table>
                 </div>
-                <div id="barcodeStatus" class="erp-barcode-status"></div>
             </div>
         </div>
 
@@ -132,9 +132,109 @@
 
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/product_line_picker.js') }}"></script>
-<script src="{{ url_for('static', filename='js/invoice_barcode.js') }}"></script>
+<style>
+.product-dropdown .pd-item{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--border);
+    transition:background .12s;gap:10px;
+}
+.product-dropdown .pd-item:last-child{border-bottom:none;}
+.product-dropdown .pd-item:hover{background:var(--accent-soft);}
+.product-dropdown .pd-item.pd-selected{background:var(--accent-soft);}
+.pd-name{font-size:13px;font-weight:600;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pd-code{font-size:11px;color:var(--text-muted);flex-shrink:0;}
+.pd-qty{font-size:11px;padding:2px 7px;border-radius:12px;font-weight:700;flex-shrink:0;}
+.pd-qty.has-stock{background:rgba(16,185,129,.15);color:#34d399;}
+.pd-qty.no-stock{background:rgba(239,68,68,.12);color:#f87171;}
+.pd-empty{padding:16px;text-align:center;color:var(--text-muted);font-size:13px;}
+.pd-loading{padding:14px;text-align:center;color:var(--text-muted);font-size:12px;}
+</style>
 <script>
 let subtotal = 0;
+
+/* ── Product Combo Box ── */
+var _pdCache = {};
+var _pdTimer = null;
+
+function openProductDropdown(inp) {
+    var wrap = inp.closest('.product-combo-wrap');
+    var dd = wrap.querySelector('.product-dropdown');
+    dd.style.display = 'block';
+    loadProducts(inp, '');
+}
+
+function loadProducts(inp, q) {
+    var wrap = inp.closest('.product-combo-wrap');
+    var dd = wrap.querySelector('.product-dropdown');
+    var whId = document.getElementById('warehouseId').value || '';
+    var cacheKey = q + '|' + whId;
+    if (_pdCache[cacheKey]) { renderProducts(dd, wrap, _pdCache[cacheKey], q); return; }
+    dd.innerHTML = '<div class="pd-loading"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</div>';
+    fetch('/api/product/search?q=' + encodeURIComponent(q) + '&warehouse_id=' + whId)
+        .then(r => r.json())
+        .then(data => {
+            _pdCache[cacheKey] = data;
+            renderProducts(dd, wrap, data, q);
+        }).catch(() => { dd.innerHTML = '<div class="pd-empty">خطأ في التحميل</div>'; });
+}
+
+function renderProducts(dd, wrap, data, q) {
+    if (!data.length) { dd.innerHTML = '<div class="pd-empty">لا توجد أصناف</div>'; return; }
+    var html = data.map(p => {
+        var highlight = q ? p.name.replace(new RegExp(q, 'gi'), m => '<mark style="background:rgba(245,158,11,.3);color:inherit;border-radius:2px;">' + m + '</mark>') : p.name;
+        var qtyClass = p.qty > 0 ? 'has-stock' : 'no-stock';
+        var qtyText = p.qty > 0 ? p.qty + ' ' + (p.unit || '') : 'غير متاح';
+        return '<div class="pd-item" data-id="' + p.id + '" data-name="' + p.name + '" data-cost="' + (p.cost || 0) + '" data-price="' + (p.price || 0) + '" data-qty="' + p.qty + '" onclick="selectProduct(this)">' +
+            '<span class="pd-name">' + highlight + '</span>' +
+            '<span class="pd-code">' + (p.code || '') + '</span>' +
+            '<span class="pd-qty ' + qtyClass + '">' + qtyText + '</span>' +
+            '</div>';
+    }).join('');
+    dd.innerHTML = html;
+}
+
+function selectProduct(item) {
+    var wrap = item.closest('.product-combo-wrap');
+    var inp = wrap.querySelector('.product-search');
+    var pid = wrap.querySelector('.pid');
+    var row = wrap.closest('tr');
+    inp.value = item.dataset.name;
+    pid.value = item.dataset.id;
+    // ملء سعر التكلفة تلقائياً
+    var priceInp = row.querySelector('.price');
+    if (priceInp && parseFloat(priceInp.value) === 0) {
+        var cost = parseFloat(item.dataset.cost) || 0;
+        priceInp.value = cost > 0 ? cost.toFixed(2) : '0';
+    }
+    item.closest('.product-dropdown').style.display = 'none';
+    calcRow(row.querySelector('.qty'));
+}
+
+function bindProductCombo(inp) {
+    inp.addEventListener('input', function() {
+        clearTimeout(_pdTimer);
+        var wrap = this.closest('.product-combo-wrap');
+        var dd = wrap.querySelector('.product-dropdown');
+        dd.style.display = 'block';
+        var q = this.value.trim();
+        _pdCache = {}; // reset cache on new search
+        _pdTimer = setTimeout(() => loadProducts(this, q), 200);
+    });
+    inp.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            this.closest('.product-combo-wrap').querySelector('.product-dropdown').style.display = 'none';
+        }
+    });
+}
+
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.product-combo-wrap')) {
+        document.querySelectorAll('.product-dropdown').forEach(d => d.style.display = 'none');
+    }
+});
+
+// bind on existing rows
+document.querySelectorAll('.product-search').forEach(inp => bindProductCombo(inp));
 function calcRow(input) {
     const row = input.closest('tr');
     const qty = parseFloat(row.querySelector('.qty').value) || 0;
@@ -220,29 +320,11 @@ function addItem() {
     row.querySelector('.price').value = '0';
     row.querySelector('.product-dropdown').style.display = 'none';
     tbody.appendChild(row);
-    ErpProductLinePicker.bind(row.querySelector('.product-search'), {
-        getWarehouseId: function () { return document.getElementById('warehouseId').value; },
-        requireWarehouse: false,
-        useCost: true
-    });
+    bindProductCombo(row.querySelector('.product-search'));
 }
 function removeItem(btn) {
     if(document.querySelectorAll('.item-row').length > 1) { btn.closest('tr').remove(); calcTotal(); }
 }
 updateSubmitBtn();
-ErpProductLinePicker.bindAll('.product-search', {
-    getWarehouseId: function () { return document.getElementById('warehouseId').value; },
-    requireWarehouse: false,
-    useCost: true
-});
-
-ErpInvoiceBarcode.bind('#barcodeInput', {
-    itemsBodyId: 'itemsBody',
-    statusSelector: '#barcodeStatus',
-    getWarehouseId: function () { return document.getElementById('warehouseId').value; },
-    requireWarehouse: false,
-    useCost: true,
-    autoFocus: true
-});
 </script>
 {% endblock %}
