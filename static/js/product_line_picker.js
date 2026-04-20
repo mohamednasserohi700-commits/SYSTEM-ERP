@@ -220,13 +220,12 @@
     inp.addEventListener('input', function() {
       var q = inp.value.trim();
       clearTimeout(timer);
-      if (!q) { dd.style.display = 'none'; return; }
       timer = setTimeout(function(){ doSearch(q); }, 180);
     });
 
     inp.addEventListener('focus', function() {
       var q = inp.value.trim();
-      if (q) doSearch(q);
+      doSearch(q);
     });
 
     inp.addEventListener('keydown', function(e) {
@@ -336,10 +335,12 @@
     var s = document.createElement('style');
     s.id = 'plp-styles';
     s.textContent = [
+      '@keyframes plpIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}',
       '.product-dropdown{display:none;position:absolute;top:calc(100% + 3px);right:0;left:0;',
       'background:var(--secondary,#1e2330);border:1px solid var(--border,#2d3446);',
       'border-radius:10px;z-index:9999;max-height:280px;overflow-y:auto;',
-      'box-shadow:0 10px 40px rgba(0,0,0,.4);scrollbar-width:thin;}',
+      'box-shadow:0 10px 40px rgba(0,0,0,.4);scrollbar-width:thin;',
+      'animation:plpIn .16s ease;}',
 
       '.product-dropdown::-webkit-scrollbar{width:4px}',
       '.product-dropdown::-webkit-scrollbar-thumb{background:var(--border,#2d3446);border-radius:4px}',
