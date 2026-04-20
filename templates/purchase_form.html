@@ -248,20 +248,13 @@ document.querySelectorAll('.product-search').forEach(bindProductCombo);
 var _bcTimer = null;
 var _bcInput = document.getElementById('barcodeInput');
 if (_bcInput) {
-    _bcInput.focus();
     _bcInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            var val = this.value.trim();
-            if (val) { handleBarcode(val); this.value = ''; }
-        }
+        if (e.key === 'Enter') { e.preventDefault(); handleBarcode(this.value.trim()); this.value=''; }
     });
     _bcInput.addEventListener('input', function() {
         clearTimeout(_bcTimer);
-        var val = this.value.trim();
-        if (val.length >= 4) {
-            _bcTimer = setTimeout(() => { handleBarcode(val); this.value = ''; }, 400);
-        }
+        var v = this.value.trim();
+        if (v.length >= 4) { _bcTimer = setTimeout(() => { handleBarcode(v); this.value=''; }, 400); }
     });
 }
 
@@ -271,7 +264,7 @@ function handleBarcode(code) {
     showBarcodeStatus('info', '<i class="fas fa-spinner fa-spin"></i> جاري البحث...');
     fetch('/api/product/search?q=' + encodeURIComponent(code) + '&warehouse_id=' + whId)
         .then(r => r.json()).then(data => {
-            var p = data.find(x => x.code === code || x.barcode === code || x.name === code) || data[0];
+            var p = data.find(x => x.code === code || x.name === code) || data[0];
             if (!p) { showBarcodeStatus('error', '<i class="fas fa-times-circle"></i> لم يُعثر على الصنف: ' + code); return; }
             addProductRow(p);
             showBarcodeStatus('success', '<i class="fas fa-check-circle"></i> تمت إضافة: ' + p.name);
@@ -282,12 +275,11 @@ function handleBarcode(code) {
 function showBarcodeStatus(type, msg) {
     var el = document.getElementById('barcodeStatus');
     if (!el) return;
-    var colors = { success:'var(--success)', error:'var(--danger)', info:'var(--text-muted)' };
+    var colors = {success:'var(--success)',error:'var(--danger)',info:'var(--text-muted)'};
     el.innerHTML = '<span style="color:' + (colors[type]||colors.info) + ';">' + msg + '</span>';
 }
 
 function addProductRow(p) {
-    /* if product already in list → increment qty */
     var existing = null;
     document.querySelectorAll('#itemsBody .item-row').forEach(row => {
         if (row.querySelector('.pid').value == p.id) existing = row;
@@ -298,18 +290,14 @@ function addProductRow(p) {
         calcRow(qInp); return;
     }
     addItem();
-    var rows  = document.querySelectorAll('#itemsBody .item-row');
+    var rows = document.querySelectorAll('#itemsBody .item-row');
     var newRow = rows[rows.length - 1];
     newRow.querySelector('.pid').value = p.id;
     newRow.querySelector('.product-search').value = p.name;
     var priceInp = newRow.querySelector('.price');
-    if (priceInp) priceInp.value = (parseFloat(p.cost)||0).toFixed(2);
+    priceInp.value = (parseFloat(p.cost)||0).toFixed(2);
     calcRow(newRow.querySelector('.qty'));
 }
-
-document.querySelectorAll('.product-search').forEach(bindProductCombo);
-
-updateSubmitBtn();
 
 function calcRow(input) {
     const row = input.closest('tr');
