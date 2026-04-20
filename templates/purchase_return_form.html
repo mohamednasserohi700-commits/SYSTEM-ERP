@@ -2,70 +2,293 @@
 {% set block_icon = 'fas fa-undo-alt' %}
 {% block title %}مرتجع مشتريات جديد{% endblock %}
 {% block page_title %}تسجيل مرتجع مشتريات{% endblock %}
+
 {% block content %}
 <script type="application/json" id="erpPurchaseReturnData">{{ purchases_json | tojson }}</script>
-<div class="card" style="max-width:800px;"><div class="card-body">
-<form method="POST" id="returnForm">
-    <div class="form-grid-2" style="margin-bottom:20px;">
-        <div class="form-group">
-            <label class="form-label">فاتورة الشراء الأصلية *</label>
-            <select name="purchase_id" class="form-control" required id="purchaseSelect" onchange="loadPurchaseItems()">
-                <option value="">اختر الفاتورة...</option>
-                {% for p in purchases %}
-                <option value="{{ p.id }}">{{ p.invoice_number }} — {{ p.supplier.name if p.supplier else '—' }} — {{ p.date.strftime('%Y/%m/%d') }}</option>
-                {% endfor %}
-            </select>
+
+<style>
+/* ════════════════════════════════════════
+   Return Form — Shared Styles (Purchase)
+════════════════════════════════════════ */
+.ret-table input[type="number"]::-webkit-inner-spin-button,
+.ret-table input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.ret-table input[type="number"] { -moz-appearance: textfield; }
+
+.ret-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+.ret-table thead th {
+    padding: 9px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .3px;
+    text-transform: uppercase;
+    color: var(--text-muted, #94a3b8);
+    text-align: center;
+    background: rgba(255,255,255,.03);
+    border-bottom: 2px solid var(--border, rgba(255,255,255,.1));
+    white-space: nowrap;
+}
+.ret-table thead th.col-product { text-align: right; padding-right: 14px; }
+
+.ret-table tbody tr {
+    border-bottom: 1px solid var(--border, rgba(255,255,255,.05));
+    transition: background .12s;
+}
+.ret-table tbody tr:hover { background: rgba(255,255,255,.02); }
+.ret-table tbody tr:last-child { border-bottom: none; }
+.ret-table tbody td {
+    padding: 7px 5px;
+    vertical-align: middle;
+}
+.ret-table tbody td.col-product { padding-right: 12px; padding-left: 5px; }
+.ret-table tbody td.col-action  { padding-left: 10px; text-align: center; }
+
+.ret-table .ret-input {
+    width: 100%;
+    padding: 7px 6px;
+    font-size: 13px;
+    text-align: center;
+    border-radius: 8px;
+    background: var(--input-bg, rgba(255,255,255,.05));
+    border: 1px solid transparent;
+    color: var(--text, #e2e8f0);
+    transition: border-color .15s, background .15s, box-shadow .15s;
+    outline: none;
+    -webkit-appearance: none;
+}
+.ret-table .ret-input:hover:not([readonly]) {
+    border-color: var(--border, rgba(255,255,255,.15));
+}
+.ret-table .ret-input:focus {
+    border-color: var(--info, #3b82f6);
+    background: rgba(59,130,246,.07);
+    box-shadow: 0 0 0 3px rgba(59,130,246,.14);
+}
+.ret-table .ret-input[readonly] {
+    opacity: .6;
+    cursor: default;
+    background: transparent;
+}
+.ret-table .product-search.ret-input {
+    text-align: right;
+    padding-right: 10px;
+}
+.ret-table .row-total.ret-input {
+    font-weight: 700;
+    color: var(--warning, #f59e0b) !important;
+    background: rgba(245,158,11,.06) !important;
+    border-color: rgba(245,158,11,.2) !important;
+}
+.ret-table .bought-qty.ret-input {
+    font-size: 12px;
+    color: var(--text-muted, #94a3b8);
+    background: rgba(255,255,255,.02) !important;
+}
+
+.ret-del-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    border: 1px solid rgba(239,68,68,.25);
+    background: rgba(239,68,68,.07);
+    color: var(--danger, #ef4444);
+    cursor: pointer;
+    transition: all .15s;
+}
+.ret-del-btn:hover {
+    background: rgba(239,68,68,.18);
+    border-color: rgba(239,68,68,.5);
+    transform: scale(1.05);
+}
+
+.ret-summary-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 14px 18px;
+    margin-top: 20px;
+    background: var(--card-bg, #1a2535);
+    border: 1px solid var(--border, rgba(255,255,255,.08));
+    border-radius: 12px;
+}
+.ret-summary-total {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    color: var(--text-muted, #94a3b8);
+}
+.ret-summary-total .amount {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--warning, #f59e0b);
+}
+.ret-summary-actions { display: flex; gap: 10px; align-items: center; }
+
+.ret-hint-strip {
+    padding: 8px 14px;
+    font-size: 11.5px;
+    color: var(--text-muted, #94a3b8);
+    background: rgba(59,130,246,.05);
+    border-bottom: 1px solid var(--border, rgba(255,255,255,.06));
+}
+</style>
+
+<div style="max-width:1080px;">
+
+    <!-- بيانات الفاتورة -->
+    <div class="card" style="margin-bottom:18px;">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-file-invoice"></i> بيانات المرتجع
+            </div>
         </div>
-        <div class="form-group">
-            <label class="form-label">سبب الإرجاع</label>
-            <input type="text" name="reason" class="form-control" placeholder="سبب الإرجاع...">
+        <div class="card-body">
+            <div class="form-grid-2">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">فاتورة الشراء الأصلية <span style="color:var(--danger)">*</span></label>
+                    <select name="purchase_id" class="form-control" required id="purchaseSelect"
+                            onchange="loadPurchaseItems()" form="returnForm">
+                        <option value="">— اختر الفاتورة —</option>
+                        {% for p in purchases %}
+                        <option value="{{ p.id }}">
+                            {{ p.invoice_number }} — {{ p.supplier.name if p.supplier else '—' }} — {{ p.date.strftime('%Y/%m/%d') }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">سبب الإرجاع</label>
+                    <input type="text" name="reason" class="form-control"
+                           placeholder="اختياري — سبب الإرجاع..." form="returnForm">
+                </div>
+            </div>
         </div>
     </div>
-    <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px;">السعر المعروض هو سعر الشراء بعد احتساب نسبة الخصم على إجمالي فاتورة الشراء الأصلية.</p>
-    <div class="card" style="margin-bottom:20px;">
+
+    <!-- جدول الأصناف -->
+    <form method="POST" id="returnForm">
+    <div class="card">
         <div class="card-header">
-            <div class="card-title"><i class="fas fa-list"></i> الأصناف المرتجعة</div>
+            <div class="card-title"><i class="fas fa-list-ul"></i> الأصناف المرتجعة</div>
             <div class="erp-barcode-wrap">
                 <div class="erp-barcode-field">
                     <i class="fas fa-barcode"></i>
-                    <input type="text" id="barcodeInput" class="form-control erp-barcode-input" placeholder="امسح/أدخل باركود" autocomplete="off">
+                    <input type="text" id="barcodeInput"
+                           class="form-control erp-barcode-input"
+                           placeholder="امسح/أدخل باركود" autocomplete="off">
                 </div>
-                <button type="button" onclick="addRow()" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> إضافة</button>
+                <button type="button" onclick="addRow()" class="btn btn-primary btn-sm">
+                    <i class="fas fa-plus"></i> إضافة صنف
+                </button>
             </div>
         </div>
-        <div class="table-container"><table>
-            <thead><tr><th style="width:32%">الصنف</th><th>كمية الشراء</th><th>الكمية المرتجعة</th><th>سعر الوحدة</th><th>خصم %</th><th>خصم إضافي %</th><th>الإجمالي</th><th></th></tr></thead>
+
+        <div class="ret-hint-strip">
+            <i class="fas fa-info-circle" style="margin-left:5px; color:var(--info,#3b82f6);"></i>
+            السعر المعروض هو سعر الشراء بعد احتساب نسبة الخصم على إجمالي فاتورة الشراء الأصلية.
+        </div>
+
+        <div style="overflow:visible;">
+        <table class="ret-table">
+            <thead>
+                <tr>
+                    <th class="col-product" style="width:28%;">الصنف</th>
+                    <th style="width:9%;">كمية الشراء</th>
+                    <th style="width:10%;">الكمية المرتجعة</th>
+                    <th style="width:12%;">سعر الوحدة</th>
+                    <th style="width:9%;">خصم %</th>
+                    <th style="width:9%;">خصم إضافي %</th>
+                    <th style="width:13%;">الإجمالي</th>
+                    <th style="width:5%;"></th>
+                </tr>
+            </thead>
             <tbody id="itemsBody">
                 <tr class="ret-row">
-                    <td>
-                        <div style="position:relative">
-                            <input type="text" class="form-control product-search" placeholder="ابحث..." autocomplete="off">
+                    <td class="col-product">
+                        <div style="position:relative;">
+                            <input type="text"
+                                   class="ret-input product-search"
+                                   placeholder="ابحث عن صنف..."
+                                   autocomplete="off" dir="rtl">
                             <input type="hidden" name="product_id[]" class="pid">
-                            <div class="product-dropdown" style="display:none;position:absolute;top:100%;right:0;left:0;background:var(--secondary);border:1px solid var(--border);border-radius:8px;z-index:500;max-height:200px;overflow-y:auto;"></div>
+                            <div class="product-dropdown"></div>
                         </div>
                     </td>
-                    <td><input type="text" class="form-control bought-qty" readonly style="min-width:70px;width:100%;font-size:13px;text-align:center;opacity:.85;font-size:12px;"></td>
-                    <td><input type="number" name="quantity[]" class="form-control qty" value="1" min="0.01" step="0.01" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>
-                    <td><input type="number" name="price[]" class="form-control price" value="0" min="0" step="0.0001" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>
-                    <td><input type="number" name="discount[]" class="form-control disc" value="0" min="0" max="100" step="0.01" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>
-                    <td><input type="number" name="extra_discount[]" class="form-control xdisc" value="0" min="0" max="100" step="0.01" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>
-                    <td><input class="form-control row-total" readonly style="color:var(--warning);font-weight:700;"></td>
-                    <td><button type="button" onclick="removeRow(this)" class="btn btn-danger btn-xs"><i class="fas fa-trash"></i></button></td>
+                    <td>
+                        <input type="text" class="ret-input bought-qty" readonly
+                               title="الكمية المشتراة في الفاتورة الأصلية">
+                    </td>
+                    <td>
+                        <input type="number" name="quantity[]"
+                               class="ret-input qty"
+                               value="1" min="0.01" step="0.01"
+                               oninput="calcRow(this)">
+                    </td>
+                    <td>
+                        <input type="number" name="price[]"
+                               class="ret-input price"
+                               value="0" min="0" step="0.0001"
+                               oninput="calcRow(this)">
+                    </td>
+                    <td>
+                        <input type="number" name="discount[]"
+                               class="ret-input disc"
+                               value="0" min="0" max="100" step="0.01"
+                               oninput="calcRow(this)">
+                    </td>
+                    <td>
+                        <input type="number" name="extra_discount[]"
+                               class="ret-input xdisc"
+                               value="0" min="0" max="100" step="0.01"
+                               oninput="calcRow(this)">
+                    </td>
+                    <td>
+                        <input class="ret-input row-total" readonly>
+                    </td>
+                    <td class="col-action">
+                        <button type="button" onclick="removeRow(this)"
+                                class="ret-del-btn" title="حذف الصف">
+                            <i class="fas fa-trash-alt" style="font-size:12px;"></i>
+                        </button>
+                    </td>
                 </tr>
             </tbody>
-        </table></div>
+        </table>
+        </div>
         <div id="barcodeStatus" class="erp-barcode-status"></div>
     </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;">
-        <a href="{{ url_for('purchase_returns') }}" class="btn btn-outline">إلغاء</a>
-        <button type="submit" class="btn btn-warning"><i class="fas fa-undo-alt"></i> تسجيل المرتجع</button>
+
+    <!-- Summary + Actions -->
+    <div class="ret-summary-bar">
+        <div class="ret-summary-total">
+            <i class="fas fa-receipt" style="font-size:18px; opacity:.5;"></i>
+            <span>إجمالي المرتجع:</span>
+            <span class="amount" id="grandTotal">0.00</span>
+        </div>
+        <div class="ret-summary-actions">
+            <a href="{{ url_for('purchase_returns') }}" class="btn btn-outline">
+                <i class="fas fa-times"></i> إلغاء
+            </a>
+            <button type="submit" class="btn btn-warning" style="padding: 10px 28px; font-size:14px;">
+                <i class="fas fa-undo-alt"></i> تسجيل المرتجع
+            </button>
+        </div>
     </div>
-</form>
-</div></div>
+    </form>
+
+</div>
 {% endblock %}
+
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/product_line_picker.js') }}"></script>
-<script src="{{ url_for('static', filename='js/invoice_barcode.js') }}"></script>
 <script>
 var PURCHASE_RETURN_META = [];
 try {
@@ -75,90 +298,97 @@ try {
 var returnRowBlueprint = null;
 var pickerOpts = { getWarehouseId: function(){ return ''; }, requireWarehouse: false, useCost: true };
 
-function bindPickerRow(row) {
-    var inp = row.querySelector('.product-search');
-    if (inp) ErpProductLinePicker.bind(inp, pickerOpts);
+function calcRow(input) {
+    var row   = input.closest('tr');
+    var qty   = parseFloat(row.querySelector('.qty').value)   || 0;
+    var price = parseFloat(row.querySelector('.price').value) || 0;
+    var disc  = parseFloat(row.querySelector('.disc').value)  || 0;
+    var xdisc = parseFloat(row.querySelector('.xdisc').value) || 0;
+    row.querySelector('.row-total').value = (qty * price * (1 - disc / 100) * (1 - xdisc / 100)).toFixed(2);
+    updateGrandTotal();
 }
 
-function calcRow(input) {
-    const row = input.closest('tr');
-    const qty = parseFloat(row.querySelector('.qty').value)||0;
-    const price = parseFloat(row.querySelector('.price').value)||0;
-    const disc = parseFloat(row.querySelector('.disc').value)||0;
-    const xdisc = parseFloat(row.querySelector('.xdisc').value)||0;
-    const base = qty * price * (1 - disc / 100);
-    row.querySelector('.row-total').value = (base * (1 - xdisc / 100)).toFixed(2);
+function updateGrandTotal() {
+    var sum = 0;
+    document.querySelectorAll('#itemsBody .row-total').forEach(function(el) {
+        sum += parseFloat(el.value) || 0;
+    });
+    var el = document.getElementById('grandTotal');
+    if (el) el.textContent = sum.toFixed(2);
 }
 
 function loadPurchaseItems() {
     if (!returnRowBlueprint) return;
-    var sel = document.getElementById('purchaseSelect');
-    var id = sel.value;
-    var meta = PURCHASE_RETURN_META.find(function(s) { return String(s.id) === String(id); });
+    var id    = document.getElementById('purchaseSelect').value;
+    var meta  = PURCHASE_RETURN_META.find(function(s){ return String(s.id) === String(id); });
     var tbody = document.getElementById('itemsBody');
     tbody.innerHTML = '';
     if (!id || !meta || !meta.items || !meta.items.length) {
-        tbody.appendChild(returnRowBlueprint.cloneNode(true));
-        bindPickerRow(tbody.querySelector('.ret-row'));
+        var blank = returnRowBlueprint.cloneNode(true);
+        tbody.appendChild(blank);
+        ErpProductLinePicker.bind(blank.querySelector('.product-search'), pickerOpts);
+        updateGrandTotal();
         return;
     }
     meta.items.forEach(function(it) {
         var row = returnRowBlueprint.cloneNode(true);
-        row.querySelector('.pid').value = it.product_id;
-        var label = it.name + (it.code ? ' — ' + it.code : '');
-        row.querySelector('.product-search').value = label;
-        row.querySelector('.price').value = it.price;
-        row.querySelector('.disc').value = 0;
-        row.querySelector('.xdisc').value = 0;
+        row.querySelector('.pid').value            = it.product_id;
+        row.querySelector('.product-search').value = it.name + (it.code ? ' — ' + it.code : '');
+        row.querySelector('.price').value          = it.price;
+        row.querySelector('.disc').value           = 0;
+        row.querySelector('.xdisc').value          = 0;
         var bq = row.querySelector('.bought-qty');
-        if (bq) bq.value = (it.quantity != null ? it.quantity : '');
-        row.querySelector('.qty').value = (it.quantity != null ? it.quantity : 1);
+        if (bq) bq.value = it.quantity != null ? it.quantity : '';
+        row.querySelector('.qty').value = it.quantity != null ? it.quantity : 1;
         tbody.appendChild(row);
         calcRow(row.querySelector('.qty'));
-        bindPickerRow(row);
+        ErpProductLinePicker.bind(row.querySelector('.product-search'), pickerOpts);
     });
+    updateGrandTotal();
 }
 
 function addRow() {
     if (!returnRowBlueprint) return;
     var tbody = document.getElementById('itemsBody');
-    var row = returnRowBlueprint.cloneNode(true);
-    row.querySelector('.pid').value = '';
+    var row   = returnRowBlueprint.cloneNode(true);
+    row.querySelector('.pid').value            = '';
     row.querySelector('.product-search').value = '';
-    row.querySelector('.row-total').value = '';
-    row.querySelector('.qty').value = '1';
-    row.querySelector('.price').value = '0';
-    row.querySelector('.disc').value = '0';
-    row.querySelector('.xdisc').value = '0';
-    var bq = row.querySelector('.bought-qty');
-    if (bq) bq.value = '';
-    var dd = row.querySelector('.product-dropdown');
-    if (dd) dd.style.display = 'none';
+    row.querySelector('.row-total').value      = '';
+    row.querySelector('.qty').value            = '1';
+    row.querySelector('.price').value          = '0';
+    row.querySelector('.disc').value           = '0';
+    row.querySelector('.xdisc').value          = '0';
+    var bq = row.querySelector('.bought-qty'); if (bq) bq.value = '';
+    var dd = row.querySelector('.product-dropdown'); if (dd) dd.style.display = 'none';
     tbody.appendChild(row);
-    bindPickerRow(row);
+    ErpProductLinePicker.bind(row.querySelector('.product-search'), pickerOpts);
+    row.querySelector('.product-search').focus();
 }
 
 function removeRow(btn) {
-    if (document.querySelectorAll('.ret-row').length > 1) btn.closest('tr').remove();
+    if (document.querySelectorAll('#itemsBody .ret-row').length > 1) {
+        btn.closest('tr').remove();
+        updateGrandTotal();
+    }
 }
 
-(function initPurchaseReturnForm() {
+(function () {
     var first = document.querySelector('#itemsBody .ret-row');
-    if (first) returnRowBlueprint = first.cloneNode(true);
-    document.querySelectorAll('#itemsBody .product-search').forEach(function(inp) {
-        ErpProductLinePicker.bind(inp, pickerOpts);
-    });
+    if (first) {
+        returnRowBlueprint = first.cloneNode(true);
+        ErpProductLinePicker.bind(first.querySelector('.product-search'), pickerOpts);
+    }
 })();
 
 ErpInvoiceBarcode.bind('#barcodeInput', {
-    itemsBodyId: 'itemsBody',
-    rowSelector: 'tr.ret-row',
+    itemsBodyId:    'itemsBody',
+    rowSelector:    'tr.ret-row',
     statusSelector: '#barcodeStatus',
     getWarehouseId: function () { return ''; },
     requireWarehouse: false,
     useCost: true,
     autoFocus: true,
-    addRow: function () { if (typeof window.addRow === 'function') window.addRow(); }
+    addRow: addRow
 });
 </script>
 {% endblock %}
