@@ -136,10 +136,138 @@
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/product_line_picker.js') }}"></script>
 <script src="{{ url_for('static', filename='js/invoice_barcode.js') }}"></script>
+<style>
+/* ── Barcode strip ── */
+.erp-barcode-wrap{display:flex;align-items:center;gap:8px;}
+.erp-barcode-field{position:relative;display:flex;align-items:center;}
+.erp-barcode-field>i{position:absolute;right:10px;color:var(--text-muted);font-size:13px;pointer-events:none;}
+.erp-barcode-input{padding-right:32px!important;width:180px;font-size:13px;}
+.erp-barcode-status{padding:6px 16px;font-size:12px;min-height:28px;}
+/* ── Product dropdown ── */
+.pd-item{display:flex;align-items:center;gap:8px;padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .12s;}
+.pd-item:last-child{border-bottom:none;}
+.pd-item:hover,.pd-item:focus{background:var(--accent-soft);outline:none;}
+.pd-name{font-size:13px;font-weight:600;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pd-code{font-size:11px;color:var(--text-muted);flex-shrink:0;}
+.pd-qty{font-size:11px;padding:2px 7px;border-radius:12px;font-weight:700;flex-shrink:0;}
+.pd-qty.has-stock{background:rgba(16,185,129,.15);color:#34d399;}
+.pd-qty.no-stock{background:rgba(239,68,68,.12);color:#f87171;}
+.pd-empty,.pd-loading{padding:14px;text-align:center;color:var(--text-muted);font-size:13px;}
+</style>
 <script>
 var SALE_TAX_AUTO = {{ sale_tax_auto|default(false)|tojson }};
 var SALE_TAX_PCT = {{ sale_tax_percent|default(0) }};
 let subtotal = 0;
+
+/* ══════════════════════════════════════════
+   Product Combo-Box — Dropdown on focus/type
+══════════════════════════════════════════ */
+var _pdCache = {};
+var _activeInput = null;
+
+function positionDropdown(inp, dd) {
+    var rect = inp.getBoundingClientRect();
+    dd.style.top   = (rect.bottom + window.scrollY + 3) + 'px';
+    dd.style.right = 'auto';
+    dd.style.left  = rect.left + 'px';
+    dd.style.width = Math.max(320, rect.width) + 'px';
+}
+
+function openSaleDropdown(inp) {
+    _activeInput = inp;
+    var wrap = inp.closest('.product-combo-wrap') || inp.parentElement;
+    var dd   = wrap.querySelector('.product-dropdown');
+    if (!dd) return;
+    document.querySelectorAll('.product-dropdown').forEach(d => { if (d !== dd) d.style.display = 'none'; });
+    dd.style.display = 'block';
+    positionDropdown(inp, dd);
+    loadSaleProducts(inp, inp.value.trim());
+}
+
+function loadSaleProducts(inp, q) {
+    var wrap = inp.closest('.product-combo-wrap') || inp.parentElement;
+    var dd   = wrap.querySelector('.product-dropdown');
+    var whId = document.getElementById('warehouseId').value || '';
+    var key  = q + '|' + whId;
+    if (_pdCache[key]) { renderSaleProducts(dd, wrap, _pdCache[key], q); return; }
+    dd.innerHTML = '<div class="pd-loading"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</div>';
+    fetch('/api/product/search?q=' + encodeURIComponent(q) + '&warehouse_id=' + whId)
+        .then(r => r.json())
+        .then(data => { _pdCache[key] = data; renderSaleProducts(dd, wrap, data, q); })
+        .catch(() => { dd.innerHTML = '<div class="pd-empty">خطأ في التحميل</div>'; });
+}
+
+function renderSaleProducts(dd, wrap, data, q) {
+    if (!data.length) { dd.innerHTML = '<div class="pd-empty">لا توجد أصناف</div>'; return; }
+    dd.innerHTML = data.map(p => {
+        var safe = q ? p.name.replace(new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'),
+            m => '<mark style="background:rgba(245,158,11,.3);color:inherit;border-radius:2px;">' + m + '</mark>') : p.name;
+        var qc = p.qty > 0 ? 'has-stock' : 'no-stock';
+        var qt = p.qty > 0 ? p.qty + ' ' + (p.unit||'') : 'غير متاح';
+        return '<div class="pd-item" tabindex="-1"' +
+            ' data-id="'    + p.id   + '"' +
+            ' data-name="'  + p.name.replace(/"/g,'&quot;') + '"' +
+            ' data-price="' + (p.price||0) + '"' +
+            ' data-qty="'   + (p.qty||0)   + '"' +
+            ' data-unit="'  + (p.unit||'') + '"' +
+            ' onclick="selectSaleProduct(this)">' +
+            '<span class="pd-name">' + safe + '</span>' +
+            '<span class="pd-code">' + (p.code||'') + '</span>' +
+            '<span class="pd-qty ' + qc + '">' + qt + '</span></div>';
+    }).join('');
+}
+
+function selectSaleProduct(el) {
+    var wrap = el.closest('.product-combo-wrap') || el.closest('.product-dropdown').parentElement;
+    if (!wrap) return;
+    var dd   = wrap.querySelector('.product-dropdown');
+    var inp  = wrap.querySelector('.product-search');
+    var pid  = wrap.querySelector('.pid');
+    var row  = wrap.closest('tr');
+    inp.value = el.dataset.name;
+    pid.value = el.dataset.id;
+    var avail = row && row.querySelector('.avail');
+    if (avail) avail.value = (el.dataset.qty||'0') + ' ' + (el.dataset.unit||'');
+    var priceInp = row && row.querySelector('.price');
+    if (priceInp && (parseFloat(priceInp.value)||0) === 0)
+        priceInp.value = (parseFloat(el.dataset.price)||0).toFixed(2);
+    if (dd) dd.style.display = 'none';
+    if (row) calcRow(row.querySelector('.qty'));
+}
+
+function initSaleDropdown(inp) {
+    /* upgrade the dropdown div to fixed-position */
+    var wrap = inp.closest('.product-combo-wrap') || inp.parentElement;
+    if (!wrap.classList.contains('product-combo-wrap')) wrap.classList.add('product-combo-wrap');
+    var dd = wrap.querySelector('.product-dropdown');
+    if (dd) {
+        Object.assign(dd.style, {
+            position:'fixed', minWidth:'320px',
+            background:'var(--secondary)', border:'1px solid var(--border)',
+            borderRadius:'10px', zIndex:'9999',
+            maxHeight:'260px', overflowY:'auto',
+            boxShadow:'0 8px 32px rgba(0,0,0,.5)'
+        });
+    }
+    inp.addEventListener('focus', function() { _pdCache={}; openSaleDropdown(this); });
+    inp.addEventListener('click', function() { _pdCache={}; openSaleDropdown(this); });
+    inp.addEventListener('input', function() { _pdCache={}; openSaleDropdown(this); });
+    inp.addEventListener('keydown', function(e) {
+        if (e.key==='Escape') { var w=this.closest('.product-combo-wrap'); if(w) w.querySelector('.product-dropdown').style.display='none'; }
+    });
+}
+
+/* close on outside click / scroll reposition */
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.product-combo-wrap'))
+        document.querySelectorAll('.product-dropdown').forEach(d => d.style.display='none');
+});
+window.addEventListener('scroll', function() {
+    if (_activeInput) {
+        var w = _activeInput.closest('.product-combo-wrap');
+        if (w) { var dd=w.querySelector('.product-dropdown'); if(dd&&dd.style.display!=='none') positionDropdown(_activeInput,dd); }
+    }
+}, {passive:true});
 
 function calcRow(input) {
     const row = input.closest('tr');
@@ -230,19 +358,19 @@ function applyCashPay() {
 
 function addItem() {
     const tbody = document.getElementById('itemsBody');
-    const row = document.querySelector('.item-row').cloneNode(true);
-    row.querySelectorAll('input:not([type=hidden])').forEach(i => { if(i.name && !i.name.includes('quantity') && !i.name.includes('price') && !i.name.includes('discount')) i.value = ''; else if(i.name.includes('quantity')) i.value = '1'; else if(i.name.includes('price') || i.name.includes('discount')) i.value = '0'; });
+    const firstRow = document.querySelector('#itemsBody .item-row');
+    const row = firstRow.cloneNode(true);
+    // reset fields
     row.querySelector('.pid').value = '';
     row.querySelector('.avail').value = '';
     row.querySelector('.row-total').value = '';
     row.querySelector('.product-search').value = '';
     row.querySelector('.product-dropdown').style.display = 'none';
+    const qInp = row.querySelector('.qty');  if(qInp) qInp.value = '1';
+    const pInp = row.querySelector('.price'); if(pInp) pInp.value = '0';
+    const dInp = row.querySelector('.disc');  if(dInp) dInp.value = '0';
     tbody.appendChild(row);
-    ErpProductLinePicker.bind(row.querySelector('.product-search'), {
-        getWarehouseId: function () { return document.getElementById('warehouseId').value; },
-        requireWarehouse: true,
-        useCost: false
-    });
+    initSaleDropdown(row.querySelector('.product-search'));
 }
 
 function removeItem(btn) {
@@ -251,15 +379,18 @@ function removeItem(btn) {
 }
 
 function updateWarehouse() {
-    document.querySelectorAll('.product-search').forEach(el => { el.value = ''; el.closest('tr').querySelector('.pid').value = ''; el.closest('tr').querySelector('.avail').value = ''; });
+    _pdCache = {};
+    document.querySelectorAll('.product-search').forEach(el => {
+        el.value = '';
+        var row = el.closest('tr');
+        if(row) { row.querySelector('.pid').value=''; var av=row.querySelector('.avail'); if(av) av.value=''; }
+    });
 }
 
+/* ── init all existing rows ── */
+document.querySelectorAll('.product-search').forEach(inp => initSaleDropdown(inp));
+
 updateSubmitBtn();
-ErpProductLinePicker.bindAll('.product-search', {
-    getWarehouseId: function () { return document.getElementById('warehouseId').value; },
-    requireWarehouse: true,
-    useCost: false
-});
 
 ErpInvoiceBarcode.bind('#barcodeInput', {
     itemsBodyId: 'itemsBody',
