@@ -1,13 +1,13 @@
 {% extends 'base.html' %}
-{% set block_icon = 'fas fa-shopping-cart' %}
-{% block title %}فاتورة مشتريات جديدة{% endblock %}
-{% block page_title %}فاتورة مشتريات جديدة{% endblock %}
-{% block breadcrumb %}المشتريات / فاتورة جديدة{% endblock %}
+{% set block_icon = 'fas fa-cash-register' %}
+{% block title %}فاتورة مبيعات جديدة{% endblock %}
+{% block page_title %}فاتورة مبيعات جديدة{% endblock %}
+{% block breadcrumb %}المبيعات / فاتورة جديدة{% endblock %}
 
 {% block content %}
 <style>
 </style>
-<form method="POST" id="purchaseForm">
+<form method="POST" id="saleForm">
     <div style="display: grid; grid-template-columns: 1fr 350px; gap: 20px; align-items: start;">
         <div>
             <div class="card" style="margin-bottom: 16px;">
@@ -15,15 +15,15 @@
                 <div class="card-body">
                     <div class="form-grid-3">
                         <div class="form-group">
-                            <label class="form-label">المورد</label>
-                            <select name="supplier_id" class="form-control">
-                                <option value="">— بدون مورد —</option>
-                                {% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+                            <label class="form-label">العميل</label>
+                            <select name="customer_id" class="form-control">
+                                <option value="">— عميل نقدي —</option>
+                                {% for c in customers %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
                             </select>
                         </div>
                         <div class="form-group">
                             <label class="form-label">المخزن *</label>
-                            <select name="warehouse_id" class="form-control" required id="warehouseId" onchange="ErpProductLinePicker.cacheClear()">
+                            <select name="warehouse_id" class="form-control" required id="warehouseId" onchange="updateWarehouse()">
                                 <option value="">اختر المخزن...</option>
                                 {% for wh in warehouses %}<option value="{{ wh.id }}">{{ wh.name }}</option>{% endfor %}
                             </select>
@@ -50,10 +50,9 @@
                 <div class="table-container">
                     <table>
                         <thead><tr>
-                            <th style="width:45%">الصنف</th>
-                            <th style="width:18%">الكمية</th>
-                            <th style="width:20%">سعر الشراء</th>
-                            <th style="width:13%">الإجمالي</th>
+                            <th style="width:35%">الصنف</th><th style="width:12%">متاح</th>
+                            <th style="width:12%">الكمية</th><th style="width:15%">السعر</th>
+                            <th style="width:10%">خصم%</th><th style="width:12%">الإجمالي</th>
                             <th style="width:4%"></th>
                         </tr></thead>
                         <tbody id="itemsBody">
@@ -65,9 +64,11 @@
                                         <div class="product-dropdown"></div>
                                     </div>
                                 </td>
+                                <td><input class="form-control avail" readonly style="color:var(--success);text-align:center;"></td>
                                 <td><input type="number" name="quantity[]" class="form-control qty" value="1" min="0.01" step="0.01" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>
-                                <td><input type="number" name="price[]" class="form-control price" value="0" min="0" step="0.0001" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>
-                                <td><input class="form-control row-total" readonly style="font-weight:700;color:var(--info);"></td>
+                                <td><input type="number" name="price[]" class="form-control price" value="0" min="0" step="0.01" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>
+                                <td><input type="number" name="discount[]" class="form-control disc" value="0" min="0" max="100" step="0.01" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>
+                                <td><input class="form-control row-total" readonly style="font-weight:700; color:var(--accent);"></td>
                                 <td><button type="button" class="btn btn-danger btn-xs item-del-btn"><i class="fas fa-trash"></i></button></td>
                             </tr>
                         </tbody>
@@ -81,50 +82,48 @@
             <div class="card" style="position: sticky; top: 80px;">
                 <div class="card-header"><div class="card-title"><i class="fas fa-calculator"></i> الحساب</div></div>
                 <div class="card-body">
-                    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);">
-                        <span style="color:var(--text-muted);">المجموع الفرعي</span>
-                        <span id="subtotalDisplay" style="font-weight:700;">0.00</span>
+                    <div style="display:flex; justify-content:space-between; padding: 10px 0; border-bottom: 1px solid var(--border);">
+                        <span style="color: var(--text-muted);">المجموع الفرعي</span>
+                        <span id="subtotalDisplay" style="font-weight: 700;">0.00</span>
                     </div>
-                    <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+                    <div style="padding: 10px 0; border-bottom: 1px solid var(--border);">
                         <label class="form-label" style="margin-bottom:8px;display:block;">خصم إجمالي</label>
                         <input type="number" name="total_discount" id="totalDiscount" class="form-control" value="0" min="0" step="0.01" oninput="calcTotal()">
                     </div>
-                    <div style="padding:10px 0;border-bottom:1px solid var(--border);">
-                        <label class="form-label" style="margin-bottom:8px;display:block;">ضريبة القيمة المضافة (مبلغ — قابل للتعديل)</label>
+                    <div style="padding: 10px 0; border-bottom: 1px solid var(--border);">
+                        <label class="form-label" style="margin-bottom: 8px; display:block;">ضريبة القيمة المضافة (مبلغ — قابل للتعديل) {% if sale_tax_auto %}<span class="badge badge-info" style="font-size:10px;">ثابتة {{ sale_tax_percent }}%</span>{% endif %}</label>
+                        {% if not sale_tax_auto %}
                         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
-                            <button type="button" class="btn btn-xs btn-outline" onclick="applyPurchaseVat(14)">احتساب 14%</button>
-                            <button type="button" class="btn btn-xs btn-outline" onclick="applyPurchaseVat(5)">احتساب 5%</button>
-                            <button type="button" class="btn btn-xs btn-outline" onclick="applyPurchaseW1()">اقتراح 1% تحصيل</button>
+                            <button type="button" class="btn btn-xs btn-outline" onclick="applySaleVatPreset(14)">احتساب 14%</button>
+                            <button type="button" class="btn btn-xs btn-outline" onclick="applySaleVatPreset(5)">احتساب 5%</button>
                         </div>
-                        <input type="number" name="tax" id="tax" class="form-control" value="0" min="0" step="0.01" oninput="calcTotal()">
+                        {% endif %}
+                        <input type="number" name="tax" id="tax" class="form-control" value="0" min="0" step="0.01" oninput="calcTotal()" {% if sale_tax_auto %}readonly style="opacity:.85"{% endif %}>
+                        {% if sale_tax_auto %}<small style="color:var(--text-muted);font-size:11px;display:block;margin-top:6px;">تُحسب تلقائياً على المجموع بعد خصم الفاتورة حسب إعدادات الفرع.</small>{% endif %}
                     </div>
-                    <div style="padding:10px 0;border-bottom:1px solid var(--border);">
-                        <label class="form-label" style="margin-bottom:8px;display:block;">تحصيل من المورد / خصم (مثلاً 1% — يُخصم من الإجمالي)</label>
-                        <input type="number" name="withholding_tax" id="withholdingTax" class="form-control" value="0" min="0" step="0.01" oninput="calcTotal()">
+                    <div style="display:flex; justify-content:space-between; padding: 14px 0; border-bottom: 1px solid var(--border);">
+                        <span style="font-size: 16px; font-weight: 700;">الإجمالي</span>
+                        <span id="totalDisplay" style="font-size: 20px; font-weight: 800; color: var(--accent);">0.00</span>
                     </div>
-                    <div style="display:flex;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border);">
-                        <span style="font-size:16px;font-weight:700;">الإجمالي</span>
-                        <span id="totalDisplay" style="font-size:20px;font-weight:800;color:var(--info);">0.00</span>
-                    </div>
-                    <div style="padding:10px 0;">
-                        <label class="form-label" style="margin-bottom:8px;display:block;">المبلغ المدفوع</label>
+                    <div style="padding: 10px 0;">
+                        <label class="form-label" style="margin-bottom: 8px; display:block;">المبلغ المدفوع</label>
                         <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:8px;">
                             <input type="number" name="paid" id="paid" class="form-control" value="0" min="0" step="0.01" oninput="onPaidInput()" style="flex:1;">
                             <button type="button" class="btn btn-success" style="white-space:nowrap;padding:8px 12px;" onclick="applyCashPay()">دفع كاش</button>
                         </div>
-                        <label id="ajalLabel" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:rgba(59,130,246,.06);margin-top:6px;">
-                            <input type="checkbox" name="is_ajal" id="isAjal" value="1" onchange="onAjalChange()" style="width:16px;height:16px;accent-color:var(--info);cursor:pointer;">
-                            <span style="font-size:13px;font-weight:600;color:var(--info);"><i class="fas fa-clock" style="margin-left:4px;"></i> آجل — سيُسدَّد لاحقاً</span>
+                        <label id="ajalLabel" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:rgba(245,158,11,.06);margin-top:6px;">
+                            <input type="checkbox" name="is_ajal" id="isAjal" value="1" onchange="onAjalChange()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
+                            <span style="font-size:13px;font-weight:600;color:var(--accent);"><i class="fas fa-clock" style="margin-left:4px;"></i> آجل — سيُسدَّد لاحقاً</span>
                         </label>
                     </div>
-                    <div style="display:flex;justify-content:space-between;padding:12px;background:rgba(239,68,68,0.08);border-radius:8px;">
-                        <span style="color:var(--danger);">المتبقي</span>
-                        <span id="remainingDisplay" style="font-weight:700;color:var(--danger);">0.00</span>
+                    <div style="display:flex; justify-content:space-between; background: rgba(239,68,68,0.08); border-radius: 8px; padding: 12px;">
+                        <span style="color: var(--danger);">المتبقي</span>
+                        <span id="remainingDisplay" style="font-weight: 700; color: var(--danger);">0.00</span>
                     </div>
-                    <button type="submit" id="submitBtn" class="btn btn-info" style="width:100%;margin-top:16px;padding:14px;">
-                        <i class="fas fa-check-circle"></i> حفظ فاتورة الشراء
+                    <button type="submit" id="submitBtn" class="btn btn-primary" style="width: 100%; margin-top: 16px; padding: 14px;">
+                        <i class="fas fa-check-circle"></i> حفظ الفاتورة
                     </button>
-                    <a href="{{ url_for('purchases') }}" class="btn btn-outline" style="width:100%;margin-top:8px;justify-content:center;">إلغاء</a>
+                    <a href="{{ url_for('sales') }}" class="btn btn-outline" style="width: 100%; margin-top: 8px; justify-content: center;">إلغاء</a>
                 </div>
             </div>
         </div>
@@ -135,27 +134,28 @@
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/product_line_picker.js') }}"></script>
 <script>
+var SALE_TAX_AUTO = {{ 'true' if sale_tax_auto else 'false' }};
+var SALE_TAX_PCT  = {{ sale_tax_percent | default(0) | float }};
 var subtotal = 0;
 
+/* ── Picker options for sales (use sale price, require warehouse) ── */
 var pickerOpts = {
     getWarehouseId: function () { return document.getElementById('warehouseId').value; },
     requireWarehouse: false,
-    useCost: true   /* show cost price in dropdown for purchases */
+    useCost: false
 };
 
+/* ── Bind all existing rows on page load ── */
 ErpProductLinePicker.bindAll('.product-search', pickerOpts);
 
+/* ── Calculations ── */
 function calcRow(input) {
-    var row   = input.closest('tr');
+    var row = input.closest('tr');
     var qty   = parseFloat(row.querySelector('.qty').value)   || 0;
     var price = parseFloat(row.querySelector('.price').value) || 0;
-    row.querySelector('.row-total').value = (qty * price).toFixed(2);
+    var disc  = parseFloat(row.querySelector('.disc').value)  || 0;
+    row.querySelector('.row-total').value = (qty * price * (1 - disc / 100)).toFixed(2);
     calcTotal();
-}
-
-function purchaseNetBase() {
-    var disc = parseFloat(document.getElementById('totalDiscount').value) || 0;
-    return Math.max(0, subtotal - disc);
 }
 
 function calcTotal() {
@@ -163,28 +163,33 @@ function calcTotal() {
     document.querySelectorAll('.row-total').forEach(function (el) { sub += parseFloat(el.value) || 0; });
     subtotal = sub;
     document.getElementById('subtotalDisplay').textContent = sub.toFixed(2);
-    var tax = parseFloat(document.getElementById('tax').value) || 0;
-    var wh  = parseFloat(document.getElementById('withholdingTax').value) || 0;
-    document.getElementById('totalDisplay').textContent = (purchaseNetBase() + tax - wh).toFixed(2);
+    var disc = parseFloat(document.getElementById('totalDiscount').value) || 0;
+    var base = Math.max(0, sub - disc);
+    var tax  = parseFloat(document.getElementById('tax').value) || 0;
+    if (SALE_TAX_AUTO) {
+        tax = Math.round(base * (SALE_TAX_PCT / 100) * 100) / 100;
+        document.getElementById('tax').value = tax.toFixed(2);
+    }
+    document.getElementById('totalDisplay').textContent = (base + tax).toFixed(2);
     calcRemaining();
 }
 
 function calcRemaining() {
-    var tax  = parseFloat(document.getElementById('tax').value) || 0;
-    var wh   = parseFloat(document.getElementById('withholdingTax').value) || 0;
-    var total = purchaseNetBase() + tax - wh;
+    var disc = parseFloat(document.getElementById('totalDiscount').value) || 0;
+    var base = Math.max(0, subtotal - disc);
+    var tax  = SALE_TAX_AUTO
+        ? Math.round(base * (SALE_TAX_PCT / 100) * 100) / 100
+        : parseFloat(document.getElementById('tax').value) || 0;
+    var total = base + tax;
     var paid  = parseFloat(document.getElementById('paid').value) || 0;
     document.getElementById('remainingDisplay').textContent = Math.max(0, total - paid).toFixed(2);
 }
 
-function applyPurchaseVat(pct) {
-    var base = purchaseNetBase();
+function applySaleVatPreset(pct) {
+    if (SALE_TAX_AUTO) return;
+    var disc = parseFloat(document.getElementById('totalDiscount').value) || 0;
+    var base = Math.max(0, subtotal - disc);
     document.getElementById('tax').value = (Math.round(base * (pct / 100) * 100) / 100).toFixed(2);
-    calcTotal();
-}
-
-function applyPurchaseW1() {
-    document.getElementById('withholdingTax').value = (Math.round(purchaseNetBase() * 0.01 * 100) / 100).toFixed(2);
     calcTotal();
 }
 
@@ -195,20 +200,23 @@ function updateSubmitBtn() {
     var paid = parseFloat(document.getElementById('paid').value) || 0;
     var ajal = document.getElementById('isAjal').checked;
     var btn  = document.getElementById('submitBtn');
-    btn.disabled      = !(paid > 0 || ajal);
+    btn.disabled     = !(paid > 0 || ajal);
     btn.style.opacity = btn.disabled ? '0.45' : '1';
     btn.title = btn.disabled ? 'يرجى إدخال المبلغ المدفوع أو تحديد آجل' : '';
 }
 
 function applyCashPay() {
-    var tax  = parseFloat(document.getElementById('tax').value) || 0;
-    var wh   = parseFloat(document.getElementById('withholdingTax').value) || 0;
-    document.getElementById('paid').value = Math.max(0, purchaseNetBase() + tax - wh).toFixed(2);
+    var disc = parseFloat(document.getElementById('totalDiscount').value) || 0;
+    var base = Math.max(0, subtotal - disc);
+    var tax  = SALE_TAX_AUTO
+        ? Math.round(base * (SALE_TAX_PCT / 100) * 100) / 100
+        : parseFloat(document.getElementById('tax').value) || 0;
+    document.getElementById('paid').value = Math.max(0, base + tax).toFixed(2);
     document.getElementById('isAjal').checked = false;
     calcRemaining(); updateSubmitBtn();
 }
 
-function _buildPurchaseRow() {
+function _buildSaleRow() {
     var tr = document.createElement('tr');
     tr.className = 'item-row';
     tr.innerHTML =
@@ -219,16 +227,18 @@ function _buildPurchaseRow() {
                 '<div class="product-dropdown"></div>' +
             '</div>' +
         '</td>' +
+        '<td><input class="form-control avail" readonly style="color:var(--success);text-align:center;"></td>' +
         '<td><input type="number" name="quantity[]" class="form-control qty" value="1" min="0.01" step="0.01" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>' +
-        '<td><input type="number" name="price[]" class="form-control price" value="0" min="0" step="0.0001" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>' +
-        '<td><input class="form-control row-total" readonly style="font-weight:700;color:var(--info);"></td>' +
+        '<td><input type="number" name="price[]" class="form-control price" value="0" min="0" step="0.01" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>' +
+        '<td><input type="number" name="discount[]" class="form-control disc" value="0" min="0" max="100" step="0.01" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>' +
+        '<td><input class="form-control row-total" readonly style="font-weight:700;color:var(--accent);"></td>' +
         '<td><button type="button" class="btn btn-danger btn-xs item-del-btn"><i class="fas fa-trash"></i></button></td>';
     return tr;
 }
 
 function addItem() {
     var tbody = document.getElementById('itemsBody');
-    var row   = _buildPurchaseRow();
+    var row   = _buildSaleRow();
     tbody.appendChild(row);
     ErpProductLinePicker.bind(row.querySelector('.product-search'), pickerOpts);
     row.querySelector('.product-search').focus();
@@ -247,13 +257,18 @@ document.addEventListener('click', function(e) {
     if (btn && btn.closest('#itemsBody')) removeItem(btn);
 });
 
+function updateWarehouse() {
+    ErpProductLinePicker.cacheClear();
+}
+
+/* ── Barcode ── */
 ErpInvoiceBarcode.bind('#barcodeInput', {
     itemsBodyId:    'itemsBody',
     rowSelector:    'tr.item-row',
     statusSelector: '#barcodeStatus',
     getWarehouseId: function () { return document.getElementById('warehouseId').value; },
-    requireWarehouse: false,
-    useCost: true,
+    requireWarehouse: true,
+    useCost: false,
     autoFocus: false,
     addRow: addItem
 });
