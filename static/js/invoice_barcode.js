@@ -32,17 +32,20 @@
   }
 
   function setRowProduct(row, p, opts) {
+    if (window.ErpProductLinePicker && typeof window.ErpProductLinePicker.applyToRow === 'function') {
+      window.ErpProductLinePicker.applyToRow(row, p, opts || {});
+      return;
+    }
     var search = row.querySelector('.product-search');
     if (search) search.value = p.name || '';
     var pid = row.querySelector('.pid');
     if (pid) pid.value = p.id;
-
     var price = row.querySelector('.price');
     if (price) price.value = String(opts.useCost ? (p.cost || 0) : (p.price || 0));
-
     var avail = row.querySelector('.avail') || row.querySelector('.avail-qty');
     if (avail) avail.value = String(p.qty || 0);
-
+    var barcode = row.querySelector('.barcode');
+    if (barcode) barcode.value = p.barcode || '';
     var dd = row.querySelector('.product-dropdown');
     if (dd) dd.style.display = 'none';
   }
@@ -145,6 +148,41 @@
     }
   }
 
+  async function handleRowBarcode(rowBarcodeInput, opts) {
+    var barcode = String(rowBarcodeInput.value || '').trim();
+    if (!barcode) return;
+    var row = rowBarcodeInput.closest('tr');
+    if (!row) return;
+    var tbody = document.getElementById(opts.itemsBodyId || 'itemsBody');
+    if (!tbody) return;
+    tbody.dataset.erpRowSelector = opts.rowSelector || tbody.dataset.erpRowSelector || 'tr.item-row';
+
+    var wh = opts.getWarehouseId ? opts.getWarehouseId() : '';
+    if (opts.requireWarehouse && !wh) {
+      if (typeof window.showToast === 'function') window.showToast('اختر المخزن أولاً', 'danger');
+      rowBarcodeInput.select();
+      return;
+    }
+
+    rowBarcodeInput.disabled = true;
+    try {
+      var r = await fetchByBarcode(barcode, wh);
+      if (!r.ok) {
+        if (typeof window.showToast === 'function') {
+          window.showToast(r.status === 404 ? 'الباركود غير موجود' : 'تعذر جلب الصنف بالباركود', 'danger');
+        }
+        rowBarcodeInput.select();
+        return;
+      }
+      setRowProduct(row, r.data, opts);
+      var qty = row.querySelector('.qty');
+      if (qty) qty.value = qty.value && num(qty.value) > 0 ? qty.value : '1';
+      if (typeof window.calcRow === 'function' && qty) window.calcRow(qty);
+    } finally {
+      rowBarcodeInput.disabled = false;
+    }
+  }
+
   function isTypingField(el) {
     if (!el) return false;
     if (el.isContentEditable) return true;
@@ -226,6 +264,22 @@
       // Global scanner listener (auto read / no Enter)
       attachScanListener(inp, opts);
     },
+    bindRowBarcodes: function (selector, options) {
+      var opts = options || {};
+      document.querySelectorAll(selector).forEach(function (inp) {
+        if (!inp || inp.dataset.erpRowBarcodeBound === '1') return;
+        inp.dataset.erpRowBarcodeBound = '1';
+        inp.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            handleRowBarcode(inp, opts);
+          }
+        });
+        inp.addEventListener('blur', function () {
+          if (String(inp.value || '').trim()) handleRowBarcode(inp, opts);
+        });
+      });
+    }
   };
 })();
 
