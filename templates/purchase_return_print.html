@@ -11,10 +11,16 @@
         th, td { border: 1px solid #ccc; padding: 8px 10px; text-align: right; }
         th { background: #1e3a5f; color: #fff; }
         .total { font-size: 18px; font-weight: 800; margin-top: 20px; }
+        body.pos { padding: 8px; font-size: 12px; }
+        body.pos .sheet { max-width: 78mm; }
+        body.pos.pos58 .sheet { max-width: 56mm; }
+        body.pos table th, body.pos table td { padding: 6px 5px; font-size: 11px; }
+        @media print { @page { size: {{ print_paper_size|default('A4') }}; margin: 8mm; } .no-print { display:none; } }
     </style>
 </head>
-<body>
-    <div style="margin-bottom:16px;"><button onclick="window.print()">طباعة</button></div>
+<body class="{% if (print_mode|default('normal')) == 'pos' %}pos{% endif %} {% if (print_paper_size|default('A4')) == '58mm' %}pos58{% endif %}">
+    <div class="sheet">
+    <div class="no-print" style="margin-bottom:16px;"><button onclick="window.print()">طباعة</button></div>
     <h1>مرتجع مشتريات — {{ ret.invoice_number }}</h1>
     <p>فاتورة شراء: {{ ret.purchase.invoice_number if ret.purchase else '—' }} — {{ ret.date.strftime('%Y/%m/%d') }}</p>
     <table>
@@ -33,5 +39,9 @@
         </tbody>
     </table>
     <div class="total">الإجمالي: {{ "{:,.2f}".format(ret.total) }}</div>
+    </div>
+{% if auto_print_requested %}
+<script>window.onload = () => window.print();</script>
+{% endif %}
 </body>
 </html>

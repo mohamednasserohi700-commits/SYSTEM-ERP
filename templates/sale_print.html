@@ -31,14 +31,19 @@
         .totals-row.paid { color: #10b981; font-weight: 700; }
         .totals-row.remaining { color: #ef4444; font-weight: 700; }
         .footer { margin-top: 36px; text-align: center; font-size: 11px; color: #999; border-top: 1px solid #eee; padding-top: 16px; }
+        body.pos .invoice { max-width: 78mm; }
+        body.pos.pos58 .invoice { max-width: 56mm; }
+        body.pos { font-size: 12px; padding: 8px; }
+        body.pos .brand-name { font-size: 18px; }
+        body.pos table th, body.pos table td { padding: 6px 4px; font-size: 11px; }
         @media print {
             body { padding: 10px; }
             .no-print { display: none; }
-            @page { size: A4; margin: 15mm; }
+            @page { size: {{ print_paper_size|default('A4') }}; margin: 8mm; }
         }
     </style>
 </head>
-<body>
+<body class="{% if (print_mode|default('normal')) == 'pos' %}pos{% endif %} {% if (print_paper_size|default('A4')) == '58mm' %}pos58{% endif %}">
 <div class="invoice">
     <div class="header">
         <div>
@@ -111,6 +116,8 @@
     </button>
     <button onclick="window.close()" style="padding:10px 24px;background:#eee;border:none;border-radius:8px;font-family:Cairo;font-size:14px;cursor:pointer;margin-right:8px;">إغلاق</button>
 </div>
+{% if auto_print_requested %}
 <script>window.onload = () => window.print();</script>
+{% endif %}
 </body>
 </html>
