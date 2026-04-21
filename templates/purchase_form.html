@@ -3,10 +3,51 @@
 {% block title %}فاتورة مشتريات جديدة{% endblock %}
 {% block page_title %}فاتورة مشتريات جديدة{% endblock %}
 {% block breadcrumb %}المشتريات / فاتورة جديدة{% endblock %}
+{% block extra_styles %}
+<style>
+    .sidebar { display: none !important; }
+    .invoice-products-sidebar {
+        position: fixed;
+        right: 0;
+        top: 0;
+        width: var(--sidebar-w);
+        height: 100vh;
+        z-index: 1001;
+        background: linear-gradient(180deg, rgba(10,10,22,.86) 0%, rgba(15,15,30,.84) 100%);
+        border-left: 1px solid var(--border);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        display: flex;
+        flex-direction: column;
+    }
+    .invoice-products-head { padding: 14px 12px; border-bottom: 1px solid var(--border); }
+    .invoice-products-list { flex: 1; min-height: 0; overflow-y: auto; padding: 10px; }
+    .invoice-products-item {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        background: rgba(255,255,255,.02);
+    }
+    .invoice-products-item:hover { border-color: var(--accent); background: rgba(59,130,246,.10); }
+    .invoice-products-item .name { font-size: 13px; font-weight: 700; }
+    .invoice-products-item .meta { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+    .invoice-products-help { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+    @media (max-width: 900px) { .invoice-products-sidebar { display: none; } }
+</style>
+{% endblock %}
 
 {% block content %}
-<style>
-</style>
+<aside class="invoice-products-sidebar">
+    <div class="invoice-products-head">
+        <div style="font-size:14px;font-weight:800;"><i class="fas fa-boxes" style="color:var(--info);margin-left:6px;"></i> قائمة الأصناف</div>
+        <input type="text" id="invoiceProductSidebarSearch" class="form-control" placeholder="ابحث بالاسم / الكود / الباركود" autocomplete="off" style="margin-top:10px;">
+        <div class="invoice-products-help">دبل كليك على الصنف لإضافته للفاتورة</div>
+    </div>
+    <div id="invoiceProductsSidebarList" class="invoice-products-list"></div>
+</aside>
+
 <form method="POST" id="purchaseForm">
     <div style="display: grid; grid-template-columns: 1fr 350px; gap: 20px; align-items: start;">
         <div>
@@ -23,7 +64,7 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">المخزن *</label>
-                            <select name="warehouse_id" class="form-control" required id="warehouseId" onchange="ErpProductLinePicker.cacheClear()">
+                            <select name="warehouse_id" class="form-control" required id="warehouseId">
                                 <option value="">اختر المخزن...</option>
                                 {% for wh in warehouses %}<option value="{{ wh.id }}">{{ wh.name }}</option>{% endfor %}
                             </select>
@@ -50,25 +91,28 @@
                 <div class="table-container">
                     <table>
                         <thead><tr>
-                            <th style="width:45%">الصنف</th>
-                            <th style="width:18%">الكمية</th>
-                            <th style="width:20%">سعر الشراء</th>
-                            <th style="width:13%">الإجمالي</th>
+                            <th style="width:38%">الصنف</th>
+                            <th style="width:12%">المتاح</th>
+                            <th style="width:16%">الكمية</th>
+                            <th style="width:16%">سعر الشراء</th>
+                            <th style="width:10%">الإجمالي</th>
                             <th style="width:4%"></th>
                         </tr></thead>
                         <tbody id="itemsBody">
                             <tr class="item-row">
                                 <td>
                                     <div style="position:relative">
-                                        <input type="text" class="form-control product-search" placeholder="ابحث بالاسم أو الكود أو الباركود..." autocomplete="off" dir="rtl">
+                                        <input type="text" class="form-control product-search" placeholder="ابحث عن صنف..." autocomplete="off">
                                         <input type="hidden" name="product_id[]" class="pid">
-                                        <div class="product-dropdown"></div>
+                                        <div class="product-dropdown" style="display:none;position:absolute;top:100%;right:0;left:0;background:var(--secondary);border:1px solid var(--border);border-radius:8px;z-index:500;max-height:200px;overflow-y:auto;"></div>
                                     </div>
+                                    <button type="button" class="btn btn-xs btn-outline clear-row-product" style="margin-top:6px;"><i class="fas fa-eraser"></i> مسح الصنف</button>
                                 </td>
-                                <td><input type="number" name="quantity[]" class="form-control qty" value="1" min="0.01" step="0.01" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>
-                                <td><input type="number" name="price[]" class="form-control price" value="0" min="0" step="0.0001" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>
+                                <td><input class="form-control avail" readonly style="color:var(--success)"></td>
+                                <td><input type="number" name="quantity[]" class="form-control qty" value="1" min="1" step="1" oninput="calcRow(this)" style="min-width:96px;width:100%;font-size:15px;text-align:center;padding:8px 6px;"></td>
+                                <td><input type="number" name="price[]" class="form-control price" value="0" min="0" step="0.01" oninput="calcRow(this)" style="min-width:96px;width:100%;font-size:15px;text-align:center;padding:8px 6px;"></td>
                                 <td><input class="form-control row-total" readonly style="font-weight:700;color:var(--info);"></td>
-                                <td><button type="button" class="btn btn-danger btn-xs item-del-btn"><i class="fas fa-trash"></i></button></td>
+                                <td><button type="button" onclick="removeItem(this)" class="btn btn-danger btn-xs"><i class="fas fa-trash"></i></button></td>
                             </tr>
                         </tbody>
                     </table>
@@ -134,133 +178,239 @@
 
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/product_line_picker.js') }}"></script>
+<script src="{{ url_for('static', filename='js/invoice_barcode.js') }}"></script>
 <script>
-var subtotal = 0;
-
-var pickerOpts = {
-    getWarehouseId: function () { return document.getElementById('warehouseId').value; },
-    requireWarehouse: false,
-    useCost: true   /* show cost price in dropdown for purchases */
-};
-
-ErpProductLinePicker.bindAll('.product-search', pickerOpts);
-
+let subtotal = 0;
 function calcRow(input) {
-    var row   = input.closest('tr');
-    var qty   = parseFloat(row.querySelector('.qty').value)   || 0;
-    var price = parseFloat(row.querySelector('.price').value) || 0;
-    row.querySelector('.row-total').value = (qty * price).toFixed(2);
+    const row = input.closest('tr');
+    const qtyEl = row.querySelector('.qty');
+    let qty = parseFloat(qtyEl.value) || 0;
+    const mode = row.dataset.qtyMode || 'int';
+    if (mode === 'half') {
+        qty = Math.max(0.5, Math.round(qty * 2) / 2);
+        qtyEl.value = qty.toString();
+    } else {
+        qty = Math.max(1, Math.round(qty));
+        qtyEl.value = qty.toString();
+    }
+    const price = parseFloat(row.querySelector('.price').value) || 0;
+    const total = qty * price;
+    row.querySelector('.row-total').value = total.toFixed(2);
     calcTotal();
 }
-
 function purchaseNetBase() {
-    var disc = parseFloat(document.getElementById('totalDiscount').value) || 0;
+    const disc = parseFloat(document.getElementById('totalDiscount').value) || 0;
     return Math.max(0, subtotal - disc);
 }
-
 function calcTotal() {
-    var sub = 0;
-    document.querySelectorAll('.row-total').forEach(function (el) { sub += parseFloat(el.value) || 0; });
+    let sub = 0;
+    document.querySelectorAll('.row-total').forEach(el => sub += parseFloat(el.value) || 0);
     subtotal = sub;
     document.getElementById('subtotalDisplay').textContent = sub.toFixed(2);
-    var tax = parseFloat(document.getElementById('tax').value) || 0;
-    var wh  = parseFloat(document.getElementById('withholdingTax').value) || 0;
-    document.getElementById('totalDisplay').textContent = (purchaseNetBase() + tax - wh).toFixed(2);
+    const tax = parseFloat(document.getElementById('tax').value) || 0;
+    const wh = parseFloat(document.getElementById('withholdingTax').value) || 0;
+    const total = purchaseNetBase() + tax - wh;
+    document.getElementById('totalDisplay').textContent = total.toFixed(2);
     calcRemaining();
 }
-
+function onPaidInput() {
+    document.getElementById('isAjal').checked = false;
+    calcRemaining();
+    updateSubmitBtn();
+}
+function onAjalChange() {
+    if (document.getElementById('isAjal').checked) {
+        document.getElementById('paid').value = '0';
+        calcRemaining();
+    }
+    updateSubmitBtn();
+}
+function updateSubmitBtn() {
+    const paid = parseFloat(document.getElementById('paid').value) || 0;
+    const ajal = document.getElementById('isAjal').checked;
+    const btn  = document.getElementById('submitBtn');
+    if (paid > 0 || ajal) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.title = '';
+    } else {
+        btn.disabled = true;
+        btn.style.opacity = '0.45';
+        btn.title = 'يرجى إدخال المبلغ المدفوع أو تحديد آجل';
+    }
+}
 function calcRemaining() {
-    var tax  = parseFloat(document.getElementById('tax').value) || 0;
-    var wh   = parseFloat(document.getElementById('withholdingTax').value) || 0;
-    var total = purchaseNetBase() + tax - wh;
-    var paid  = parseFloat(document.getElementById('paid').value) || 0;
+    const tax = parseFloat(document.getElementById('tax').value) || 0;
+    const wh = parseFloat(document.getElementById('withholdingTax').value) || 0;
+    const total = purchaseNetBase() + tax - wh;
+    const paid = parseFloat(document.getElementById('paid').value) || 0;
     document.getElementById('remainingDisplay').textContent = Math.max(0, total - paid).toFixed(2);
 }
-
+function applyCashPay() {
+    const tax = parseFloat(document.getElementById('tax').value) || 0;
+    const wh = parseFloat(document.getElementById('withholdingTax').value) || 0;
+    const total = Math.max(0, purchaseNetBase() + tax - wh);
+    document.getElementById('paid').value = total.toFixed(2);
+    document.getElementById('isAjal').checked = false;
+    calcRemaining();
+    updateSubmitBtn();
+}
 function applyPurchaseVat(pct) {
-    var base = purchaseNetBase();
+    const base = purchaseNetBase();
     document.getElementById('tax').value = (Math.round(base * (pct / 100) * 100) / 100).toFixed(2);
     calcTotal();
 }
-
 function applyPurchaseW1() {
-    document.getElementById('withholdingTax').value = (Math.round(purchaseNetBase() * 0.01 * 100) / 100).toFixed(2);
+    const base = purchaseNetBase();
+    document.getElementById('withholdingTax').value = (Math.round(base * 0.01 * 100) / 100).toFixed(2);
     calcTotal();
 }
-
-function onPaidInput()  { document.getElementById('isAjal').checked = false; calcRemaining(); updateSubmitBtn(); }
-function onAjalChange() { if (document.getElementById('isAjal').checked) { document.getElementById('paid').value = '0'; calcRemaining(); } updateSubmitBtn(); }
-
-function updateSubmitBtn() {
-    var paid = parseFloat(document.getElementById('paid').value) || 0;
-    var ajal = document.getElementById('isAjal').checked;
-    var btn  = document.getElementById('submitBtn');
-    btn.disabled      = !(paid > 0 || ajal);
-    btn.style.opacity = btn.disabled ? '0.45' : '1';
-    btn.title = btn.disabled ? 'يرجى إدخال المبلغ المدفوع أو تحديد آجل' : '';
-}
-
-function applyCashPay() {
-    var tax  = parseFloat(document.getElementById('tax').value) || 0;
-    var wh   = parseFloat(document.getElementById('withholdingTax').value) || 0;
-    document.getElementById('paid').value = Math.max(0, purchaseNetBase() + tax - wh).toFixed(2);
-    document.getElementById('isAjal').checked = false;
-    calcRemaining(); updateSubmitBtn();
-}
-
-function _buildPurchaseRow() {
-    var tr = document.createElement('tr');
-    tr.className = 'item-row';
-    tr.innerHTML =
-        '<td>' +
-            '<div style="position:relative">' +
-                '<input type="text" class="form-control product-search" placeholder="ابحث بالاسم أو الكود أو الباركود..." autocomplete="off" dir="rtl">' +
-                '<input type="hidden" name="product_id[]" class="pid">' +
-                '<div class="product-dropdown"></div>' +
-            '</div>' +
-        '</td>' +
-        '<td><input type="number" name="quantity[]" class="form-control qty" value="1" min="0.01" step="0.01" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>' +
-        '<td><input type="number" name="price[]" class="form-control price" value="0" min="0" step="0.0001" oninput="calcRow(this)" style="min-width:80px;width:100%;font-size:14px;text-align:center;padding:6px 4px;"></td>' +
-        '<td><input class="form-control row-total" readonly style="font-weight:700;color:var(--info);"></td>' +
-        '<td><button type="button" class="btn btn-danger btn-xs item-del-btn"><i class="fas fa-trash"></i></button></td>';
-    return tr;
-}
-
 function addItem() {
-    var tbody = document.getElementById('itemsBody');
-    var row   = _buildPurchaseRow();
+    const tbody = document.getElementById('itemsBody');
+    const row = document.querySelector('.item-row').cloneNode(true);
+    row.querySelector('.pid').value = '';
+    row.querySelector('.product-search').value = '';
+    row.querySelector('.avail').value = '';
+    row.querySelector('.row-total').value = '';
+    row.querySelector('.qty').value = '1';
+    row.querySelector('.price').value = '0';
+    row.querySelector('.product-dropdown').style.display = 'none';
     tbody.appendChild(row);
-    ErpProductLinePicker.bind(row.querySelector('.product-search'), pickerOpts);
-    row.querySelector('.product-search').focus();
+    ErpProductLinePicker.bind(row.querySelector('.product-search'), {
+        getWarehouseId: function () { return document.getElementById('warehouseId').value; },
+        requireWarehouse: false,
+        useCost: true,
+        mergeDuplicates: true,
+        limit: 20
+    });
 }
-
 function removeItem(btn) {
-    if (document.querySelectorAll('#itemsBody .item-row').length > 1) {
-        btn.closest('tr').remove();
-        calcTotal();
-    }
+    if(document.querySelectorAll('.item-row').length > 1) { btn.closest('tr').remove(); calcTotal(); }
 }
-
-/* Event delegation للحذف — يعمل على الصفوف الديناميكية */
-document.addEventListener('click', function(e) {
-    var btn = e.target.closest('.item-del-btn');
-    if (btn && btn.closest('#itemsBody')) removeItem(btn);
+updateSubmitBtn();
+ErpProductLinePicker.bindAll('.product-search', {
+    getWarehouseId: function () { return document.getElementById('warehouseId').value; },
+    requireWarehouse: false,
+    useCost: true,
+    mergeDuplicates: true,
+    limit: 20
 });
 
 ErpInvoiceBarcode.bind('#barcodeInput', {
-    itemsBodyId:    'itemsBody',
-    rowSelector:    'tr.item-row',
+    itemsBodyId: 'itemsBody',
     statusSelector: '#barcodeStatus',
     getWarehouseId: function () { return document.getElementById('warehouseId').value; },
     requireWarehouse: false,
     useCost: true,
-    autoFocus: false,
-    addRow: addItem
+    autoFocus: true
 });
 
-updateSubmitBtn();
+document.getElementById('purchaseForm').addEventListener('submit', function (e) {
+    const rows = document.querySelectorAll('#itemsBody tr.item-row');
+    for (const row of rows) {
+        const pid = (row.querySelector('.pid')?.value || '').trim();
+        const search = (row.querySelector('.product-search')?.value || '').trim();
+        if (search && !pid) {
+            e.preventDefault();
+            if (typeof window.showToast === 'function') window.showToast('لا يمكن إضافة صنف بدون تحديده من القائمة أو الباركود', 'danger');
+            row.querySelector('.product-search')?.focus();
+            return;
+        }
+    }
+});
 
+async function fetchSidebarProducts(q) {
+    const wh = document.getElementById('warehouseId')?.value || '';
+    const params = new URLSearchParams();
+    params.set('q', q || '');
+    params.set('limit', '120');
+    if (wh) params.set('warehouse_id', wh);
+    const res = await fetch('/products/search?' + params.toString());
+    const data = await res.json();
+    return Array.isArray(data) ? data : (data.items || []);
+}
 
+function findExistingRowByPid(pid) {
+    const rows = document.querySelectorAll('#itemsBody tr.item-row');
+    for (const row of rows) {
+        if ((row.querySelector('.pid')?.value || '') === String(pid)) return row;
+    }
+    return null;
+}
 
+function findEmptyRow() {
+    const rows = document.querySelectorAll('#itemsBody tr.item-row');
+    for (const row of rows) {
+        if (!(row.querySelector('.pid')?.value || '').trim()) return row;
+    }
+    return null;
+}
+
+function addProductFromSidebar(p) {
+    let row = findExistingRowByPid(p.id);
+    if (row) {
+        const qty = row.querySelector('.qty');
+        if (qty) {
+            const step = parseFloat(qty.step || '1') || 1;
+            qty.value = String((parseFloat(qty.value || '0') || 0) + step);
+            calcRow(qty);
+        }
+        return;
+    }
+    row = findEmptyRow();
+    if (!row) {
+        addItem();
+        row = document.querySelector('#itemsBody tr.item-row:last-child');
+    }
+    if (!row) return;
+    if (window.ErpProductLinePicker && typeof window.ErpProductLinePicker.applyToRow === 'function') {
+        window.ErpProductLinePicker.applyToRow(row, p, { useCost: true, mergeDuplicates: true });
+    }
+}
+
+function renderSidebarProducts(items) {
+    const list = document.getElementById('invoiceProductsSidebarList');
+    if (!list) return;
+    if (!items.length) {
+        list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-muted);">لا توجد أصناف</div>';
+        return;
+    }
+    list.innerHTML = items.map(p => `
+        <div class="invoice-products-item" data-id="${p.id}" tabindex="0">
+            <div class="name">${p.name || ''}</div>
+            <div class="meta">كود: ${p.code || '-'} | باركود: ${p.barcode || '-'} </div>
+            <div class="meta">تكلفة: ${Number(p.cost || 0).toFixed(2)} | المتاح: ${p.stock ?? p.qty ?? 0} ${p.unit || ''}</div>
+        </div>
+    `).join('');
+    const map = new Map(items.map(p => [String(p.id), p]));
+    list.querySelectorAll('.invoice-products-item').forEach(el => {
+        el.addEventListener('dblclick', () => {
+            const p = map.get(el.dataset.id || '');
+            if (p) addProductFromSidebar(p);
+        });
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const p = map.get(el.dataset.id || '');
+                if (p) addProductFromSidebar(p);
+            }
+        });
+    });
+}
+
+let sidebarSearchTimer = null;
+function loadSidebarProducts() {
+    const q = document.getElementById('invoiceProductSidebarSearch')?.value || '';
+    fetchSidebarProducts(q).then(renderSidebarProducts).catch(() => {
+        const list = document.getElementById('invoiceProductsSidebarList');
+        if (list) list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--danger);">تعذر تحميل الأصناف</div>';
+    });
+}
+
+document.getElementById('invoiceProductSidebarSearch')?.addEventListener('input', function () {
+    clearTimeout(sidebarSearchTimer);
+    sidebarSearchTimer = setTimeout(loadSidebarProducts, 220);
+});
+document.getElementById('warehouseId')?.addEventListener('change', loadSidebarProducts);
+loadSidebarProducts();
 </script>
 {% endblock %}

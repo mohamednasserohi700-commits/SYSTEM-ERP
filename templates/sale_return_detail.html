@@ -46,3 +46,21 @@
     <div class="card-body" style="font-size:18px;font-weight:800;color:var(--danger);">{{ "{:,.2f}".format(ret.total) }}</div>
 </div>
 {% endblock %}
+
+{% block extra_scripts %}
+{% if auto_print_requested %}
+<script>
+(function () {
+    var copies = {{ print_auto_copies|default(1) }};
+    var paper = '{{ print_paper_size|default("A4") }}';
+    var mode = '{{ print_mode|default("normal") }}';
+    var delay = 350;
+    for (let i = 0; i < copies; i++) {
+        setTimeout(function () {
+            window.open('{{ url_for("sale_return_print", id=ret.id) }}?autoprint=1&paper=' + encodeURIComponent(paper) + '&mode=' + encodeURIComponent(mode), '_blank');
+        }, i * delay);
+    }
+})();
+</script>
+{% endif %}
+{% endblock %}

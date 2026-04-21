@@ -4,7 +4,7 @@
 {% block page_title %}فاتورة شراء {{ purchase.invoice_number }}{% if purchase_has_return %} <span class="badge badge-warning" style="vertical-align:middle;">تم الارتجاع</span>{% endif %}{% endblock %}
 {% block breadcrumb %}المشتريات / تفاصيل الفاتورة{% endblock %}
 {% block topbar_actions %}
-<button onclick="window.print()" class="btn btn-outline"><i class="fas fa-print"></i> طباعة</button>
+<a href="{{ url_for('purchase_print', id=purchase.id) }}" target="_blank" class="btn btn-outline"><i class="fas fa-print"></i> طباعة</a>
 <a href="{{ url_for('purchases') }}" class="btn btn-outline"><i class="fas fa-arrow-right"></i> رجوع</a>
 {% endblock %}
 {% block content %}
@@ -95,4 +95,22 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if auto_print_requested %}
+<script>
+(function () {
+    var copies = {{ print_auto_copies|default(1) }};
+    var paper = '{{ print_paper_size|default("A4") }}';
+    var mode = '{{ print_mode|default("normal") }}';
+    var delay = 350;
+    for (let i = 0; i < copies; i++) {
+        setTimeout(function () {
+            window.open('{{ url_for("purchase_print", id=purchase.id) }}?autoprint=1&paper=' + encodeURIComponent(paper) + '&mode=' + encodeURIComponent(mode), '_blank');
+        }, i * delay);
+    }
+})();
+</script>
+{% endif %}
 {% endblock %}
