@@ -481,7 +481,7 @@ PERMISSION_KEYS = [
     ('categories', 'التصنيفات'),
     ('reports', 'التقارير'),
     ('settings', 'الإعدادات (فروع / مخازن / ضريبة البيع)'),
-    ('settings_branding', 'عرض وهوية النظام'),
+    ('settings_branding', 'إعدادات النظام'),
     ('settings_database', 'إدارة قاعدة البيانات'),
     ('users', 'المستخدمون'),
     ('connected_users', 'المتصلون'),
@@ -508,6 +508,13 @@ DEFAULT_SETTINGS = {
 EXTRA_APP_SETTINGS_DEFAULTS = {
     'sale_fixed_tax_percent': '0',
     'sale_fixed_tax_enabled': '0',
+    'print_mode': 'normal',
+    'print_paper_size': 'A4',
+    'print_auto_sale': '0',
+    'print_auto_purchase': '0',
+    'print_auto_sale_return': '0',
+    'print_auto_purchase_return': '0',
+    'print_auto_copies': '1',
 }
 
 GLOBAL_ONLY_SETTING_KEYS = frozenset({
@@ -1533,6 +1540,8 @@ def api_product(id):
 def api_product_search():
     q = (request.args.get('q') or '').strip()
     warehouse_id = request.args.get('warehouse_id')
+    limit = request.args.get('limit', type=int) or 80
+    limit = max(1, min(limit, 100))
     query = Product.query.filter_by(is_active=True)
     if q:
         query = query.filter(db.or_(
@@ -1540,16 +1549,80 @@ def api_product_search():
             Product.code.contains(q),
             Product.barcode.contains(q),
         ))
-    products = query.order_by(Product.name).limit(80).all()
+    products = query.order_by(Product.name).limit(limit).all()
+    try:
+        warehouse_id_int = int(warehouse_id) if warehouse_id not in (None, '', 'null') else None
+    except Exception:
+        warehouse_id_int = None
+
     result = []
     for p in products:
-        qty = 0
-        if warehouse_id:
-            stock = Stock.query.filter_by(product_id=p.id, warehouse_id=warehouse_id).first()
+        if warehouse_id_int is not None:
+            stock = Stock.query.filter_by(product_id=p.id, warehouse_id=warehouse_id_int).first()
             qty = stock.quantity if stock else 0
+        else:
+            qty = db.session.query(db.func.coalesce(db.func.sum(Stock.quantity), 0)).filter(Stock.product_id == p.id).scalar() or 0
         result.append({'id': p.id, 'code': p.code, 'name': p.name,
                        'price': p.sell_price, 'cost': p.cost_price, 'unit': p.unit, 'qty': qty})
     return jsonify(result)
+
+
+@app.route('/products/search')
+@login_required
+def products_search():
+    """
+    Search endpoint for invoice line picker (lazy search).
+    Returns: id, name, barcode, price, stock (+ code/cost/unit for compatibility)
+    """
+    q = (request.args.get('q') or '').strip()
+    warehouse_id = request.args.get('warehouse_id')
+    page = request.args.get('page', type=int) or 1
+    limit = request.args.get('limit', type=int) or 20
+    page = max(page, 1)
+    limit = max(1, min(limit, 100))
+
+    query = Product.query.filter_by(is_active=True)
+    if q:
+        query = query.filter(db.or_(
+            Product.name.contains(q),
+            Product.code.contains(q),
+            Product.barcode.contains(q),
+        ))
+
+    total = query.count()
+    products = query.order_by(Product.name).offset((page - 1) * limit).limit(limit).all()
+
+    try:
+        warehouse_id_int = int(warehouse_id) if warehouse_id not in (None, '', 'null') else None
+    except Exception:
+        warehouse_id_int = None
+
+    items = []
+    for p in products:
+        if warehouse_id_int is not None:
+            stock = Stock.query.filter_by(product_id=p.id, warehouse_id=warehouse_id_int).first()
+            qty = stock.quantity if stock else 0
+        else:
+            qty = db.session.query(db.func.coalesce(db.func.sum(Stock.quantity), 0)).filter(Stock.product_id == p.id).scalar() or 0
+        items.append({
+            'id': p.id,
+            'name': p.name,
+            'code': p.code,
+            'barcode': p.barcode,
+            'price': p.sell_price,
+            'cost': p.cost_price,
+            'unit': p.unit,
+            'stock': qty,
+            'qty': qty,  # backward compatibility for existing JS widgets
+        })
+
+    return jsonify({
+        'items': items,
+        'page': page,
+        'limit': limit,
+        'hasMore': (page * limit) < total,
+        'total': total,
+    })
 
 
 @app.route('/api/product/by_barcode')
@@ -1560,14 +1633,22 @@ def api_product_by_barcode():
     if not barcode:
         return jsonify({'error': 'barcode_required'}), 400
 
-    p = Product.query.filter_by(is_active=True).filter(Product.barcode == barcode).first()
+    p = Product.query.filter_by(is_active=True).filter(
+        db.or_(Product.barcode == barcode, Product.code == barcode)
+    ).first()
     if not p:
         return jsonify({'error': 'not_found'}), 404
 
-    qty = 0
-    if warehouse_id:
-        stock = Stock.query.filter_by(product_id=p.id, warehouse_id=warehouse_id).first()
+    try:
+        warehouse_id_int = int(warehouse_id) if warehouse_id not in (None, '', 'null') else None
+    except Exception:
+        warehouse_id_int = None
+
+    if warehouse_id_int is not None:
+        stock = Stock.query.filter_by(product_id=p.id, warehouse_id=warehouse_id_int).first()
         qty = stock.quantity if stock else 0
+    else:
+        qty = db.session.query(db.func.coalesce(db.func.sum(Stock.quantity), 0)).filter(Stock.product_id == p.id).scalar() or 0
 
     return jsonify({
         'id': p.id,
@@ -1742,6 +1823,16 @@ def new_sale():
             disc = float(discounts[i]) if i < len(discounts) else 0
             lines.append((int(pid), qty, price, disc))
 
+        # Merge duplicated products into one line to prevent duplicate items per invoice.
+        merged = {}
+        for pid, qty, price, disc in lines:
+            if pid not in merged:
+                merged[pid] = {'qty': 0.0, 'price': price, 'disc': disc}
+            merged[pid]['qty'] += qty
+            merged[pid]['price'] = price
+            merged[pid]['disc'] = disc
+        lines = [(pid, v['qty'], v['price'], v['disc']) for pid, v in merged.items()]
+
         for pid, qty, price, disc in lines:
             stock = Stock.query.filter_by(product_id=pid, warehouse_id=warehouse_id).first()
             avail = float(stock.quantity) if stock else 0.0
@@ -1790,6 +1881,9 @@ def new_sale():
         db.session.add(sale)
         db.session.commit()
         flash(f'تم إنشاء الفاتورة {sale.invoice_number} بنجاح', 'success')
+        auto_print = (get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None)).get('print_auto_sale') or '0').strip() in ('1', 'true', 'on', 'yes')
+        if auto_print:
+            return redirect(url_for('sale_detail', id=sale.id, autoprint='1'))
         return redirect(url_for('sale_detail', id=sale.id))
 
     customers = Customer.query.filter_by(is_active=True).all()
@@ -1808,7 +1902,22 @@ def new_sale():
 def sale_detail(id):
     sale = Sale.query.get_or_404(id)
     sale_has_return = SaleReturn.query.filter_by(sale_id=sale.id).first() is not None
-    return render_template('sale_detail.html', sale=sale, sale_has_return=sale_has_return)
+    gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
+    copies_raw = gs.get('print_auto_copies') or '1'
+    try:
+        copies = int(float(copies_raw))
+    except Exception:
+        copies = 1
+    copies = max(1, min(copies, 10))
+    return render_template(
+        'sale_detail.html',
+        sale=sale,
+        sale_has_return=sale_has_return,
+        print_mode=(gs.get('print_mode') or 'normal'),
+        print_paper_size=(gs.get('print_paper_size') or 'A4'),
+        print_auto_copies=copies,
+        auto_print_requested=(request.args.get('autoprint') == '1'),
+    )
 
 @app.route('/sales/<int:id>/delete', methods=['POST'])
 @login_required
@@ -1878,12 +1987,25 @@ def new_purchase():
             paid=float(request.form.get('paid', 0)),
             notes=request.form.get('notes')
         )
-        subtotal = 0
+        lines = []
         for i, pid in enumerate(product_ids):
             if not pid:
                 continue
             qty = float(quantities[i])
             price = float(prices[i])
+            lines.append((int(pid), qty, price))
+
+        merged = {}
+        for pid, qty, price in lines:
+            if pid not in merged:
+                merged[pid] = {'qty': 0.0, 'price': price}
+            merged[pid]['qty'] += qty
+            merged[pid]['price'] = price
+
+        subtotal = 0
+        for pid, line in merged.items():
+            qty = line['qty']
+            price = line['price']
             item_total = qty * price
             subtotal += item_total
             item = PurchaseItem(product_id=int(pid), quantity=qty, price=price, total=item_total)
@@ -1906,6 +2028,9 @@ def new_purchase():
         db.session.add(purchase)
         db.session.commit()
         flash(f'تم إنشاء فاتورة الشراء {purchase.invoice_number} بنجاح', 'success')
+        auto_print = (get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None)).get('print_auto_purchase') or '0').strip() in ('1', 'true', 'on', 'yes')
+        if auto_print:
+            return redirect(url_for('purchase_detail', id=purchase.id, autoprint='1'))
         return redirect(url_for('purchase_detail', id=purchase.id))
     
     suppliers = Supplier.query.filter_by(is_active=True).all()
@@ -1917,7 +2042,22 @@ def new_purchase():
 def purchase_detail(id):
     purchase = Purchase.query.get_or_404(id)
     purchase_has_return = PurchaseReturn.query.filter_by(purchase_id=purchase.id).first() is not None
-    return render_template('purchase_detail.html', purchase=purchase, purchase_has_return=purchase_has_return)
+    gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
+    copies_raw = gs.get('print_auto_copies') or '1'
+    try:
+        copies = int(float(copies_raw))
+    except Exception:
+        copies = 1
+    copies = max(1, min(copies, 10))
+    return render_template(
+        'purchase_detail.html',
+        purchase=purchase,
+        purchase_has_return=purchase_has_return,
+        print_mode=(gs.get('print_mode') or 'normal'),
+        print_paper_size=(gs.get('print_paper_size') or 'A4'),
+        print_auto_copies=copies,
+        auto_print_requested=(request.args.get('autoprint') == '1'),
+    )
 
 @app.route('/purchases/<int:id>/delete', methods=['POST'])
 @login_required
@@ -2014,6 +2154,9 @@ def new_sale_return():
                 customer.balance -= total
         db.session.commit()
         flash('تم تسجيل مرتجع المبيعات بنجاح', 'success')
+        auto_print = (get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None)).get('print_auto_sale_return') or '0').strip() in ('1', 'true', 'on', 'yes')
+        if auto_print:
+            return redirect(url_for('sale_return_detail', id=ret.id, autoprint='1'))
         return redirect(url_for('sale_return_detail', id=ret.id))
 
     sales = Sale.query.options(
@@ -2520,6 +2663,7 @@ def delete_inventory_stock_line():
 def app_settings():
     bid = getattr(current_user, 'branch_id', None)
     if request.method == 'POST':
+        checkbox_keys = {'print_auto_sale', 'print_auto_purchase', 'print_auto_sale_return', 'print_auto_purchase_return'}
         for key in DEFAULT_SETTINGS:
             if key in GLOBAL_ONLY_SETTING_KEYS:
                 continue
@@ -2532,8 +2676,19 @@ def app_settings():
                 row = AppSetting(key=storage_key)
                 db.session.add(row)
             row.value = val.strip()
+        for key in ('print_mode', 'print_paper_size', 'print_auto_copies', 'print_auto_sale', 'print_auto_purchase', 'print_auto_sale_return', 'print_auto_purchase_return'):
+            if key in checkbox_keys:
+                val = '1' if request.form.get(key) in ('1', 'on', 'true', 'yes') else '0'
+            else:
+                val = (request.form.get(key) or EXTRA_APP_SETTINGS_DEFAULTS.get(key, '')).strip()
+            storage_key = f'br{bid}_{key}' if bid else key
+            row = AppSetting.query.filter_by(key=storage_key).first()
+            if not row:
+                row = AppSetting(key=storage_key)
+                db.session.add(row)
+            row.value = val
         db.session.commit()
-        flash('تم حفظ إعدادات العرض والهوية' + (f' للفرع الحالي' if bid else ' (عامة للنظام)'), 'success')
+        flash('تم حفظ إعدادات النظام' + (f' للفرع الحالي' if bid else ' (عامة للنظام)'), 'success')
         return redirect(url_for('app_settings'))
     br = Branch.query.get(bid) if bid else None
     return render_template(
@@ -2881,6 +3036,9 @@ def new_purchase_return():
                 supplier.balance += total
         db.session.commit()
         flash('تم تسجيل مرتجع المشتريات بنجاح', 'success')
+        auto_print = (get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None)).get('print_auto_purchase_return') or '0').strip() in ('1', 'true', 'on', 'yes')
+        if auto_print:
+            return redirect(url_for('purchase_return_detail', id=ret.id, autoprint='1'))
         return redirect(url_for('purchase_return_detail', id=ret.id))
     purchases = Purchase.query.options(
         joinedload(Purchase.items).joinedload(PurchaseItem.product),
@@ -2916,7 +3074,21 @@ def sale_return_detail(id):
         joinedload(SaleReturn.sale).joinedload(Sale.customer),
         joinedload(SaleReturn.sale).joinedload(Sale.warehouse),
     ).get_or_404(id)
-    return render_template('sale_return_detail.html', ret=ret)
+    gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
+    copies_raw = gs.get('print_auto_copies') or '1'
+    try:
+        copies = int(float(copies_raw))
+    except Exception:
+        copies = 1
+    copies = max(1, min(copies, 10))
+    return render_template(
+        'sale_return_detail.html',
+        ret=ret,
+        print_mode=(gs.get('print_mode') or 'normal'),
+        print_paper_size=(gs.get('print_paper_size') or 'A4'),
+        print_auto_copies=copies,
+        auto_print_requested=(request.args.get('autoprint') == '1'),
+    )
 
 
 @app.route('/returns/sale/<int:id>/print')
@@ -2926,7 +3098,21 @@ def sale_return_print(id):
         joinedload(SaleReturn.items).joinedload(SaleReturnItem.product),
         joinedload(SaleReturn.sale).joinedload(Sale.customer),
     ).get_or_404(id)
-    return render_template('sale_return_print.html', ret=ret)
+    gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
+    copies_raw = gs.get('print_auto_copies') or '1'
+    try:
+        copies = int(float(copies_raw))
+    except Exception:
+        copies = 1
+    copies = max(1, min(copies, 10))
+    return render_template(
+        'sale_return_print.html',
+        ret=ret,
+        print_mode=(gs.get('print_mode') or 'normal'),
+        print_paper_size=(gs.get('print_paper_size') or 'A4'),
+        print_auto_copies=copies,
+        auto_print_requested=(request.args.get('autoprint') == '1'),
+    )
 
 
 @app.route('/returns/purchase/<int:id>')
@@ -2938,7 +3124,21 @@ def purchase_return_detail(id):
         joinedload(PurchaseReturn.purchase).joinedload(Purchase.supplier),
         joinedload(PurchaseReturn.purchase).joinedload(Purchase.warehouse),
     ).get_or_404(id)
-    return render_template('purchase_return_detail.html', ret=ret)
+    gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
+    copies_raw = gs.get('print_auto_copies') or '1'
+    try:
+        copies = int(float(copies_raw))
+    except Exception:
+        copies = 1
+    copies = max(1, min(copies, 10))
+    return render_template(
+        'purchase_return_detail.html',
+        ret=ret,
+        print_mode=(gs.get('print_mode') or 'normal'),
+        print_paper_size=(gs.get('print_paper_size') or 'A4'),
+        print_auto_copies=copies,
+        auto_print_requested=(request.args.get('autoprint') == '1'),
+    )
 
 
 @app.route('/returns/purchase/<int:id>/print')
@@ -2948,7 +3148,21 @@ def purchase_return_print(id):
         joinedload(PurchaseReturn.items).joinedload(PurchaseReturnItem.product),
         joinedload(PurchaseReturn.purchase).joinedload(Purchase.supplier),
     ).get_or_404(id)
-    return render_template('purchase_return_print.html', ret=ret)
+    gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
+    copies_raw = gs.get('print_auto_copies') or '1'
+    try:
+        copies = int(float(copies_raw))
+    except Exception:
+        copies = 1
+    copies = max(1, min(copies, 10))
+    return render_template(
+        'purchase_return_print.html',
+        ret=ret,
+        print_mode=(gs.get('print_mode') or 'normal'),
+        print_paper_size=(gs.get('print_paper_size') or 'A4'),
+        print_auto_copies=copies,
+        auto_print_requested=(request.args.get('autoprint') == '1'),
+    )
 
 
 @app.route('/settings/connected-users')
@@ -3578,7 +3792,42 @@ def sale_payment(id):
 @login_required
 def sale_print(id):
     sale = Sale.query.get_or_404(id)
-    return render_template('sale_print.html', sale=sale)
+    gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
+    copies_raw = gs.get('print_auto_copies') or '1'
+    try:
+        copies = int(float(copies_raw))
+    except Exception:
+        copies = 1
+    copies = max(1, min(copies, 10))
+    return render_template(
+        'sale_print.html',
+        sale=sale,
+        print_mode=(gs.get('print_mode') or 'normal'),
+        print_paper_size=(gs.get('print_paper_size') or 'A4'),
+        print_auto_copies=copies,
+        auto_print_requested=(request.args.get('autoprint') == '1'),
+    )
+
+
+@app.route('/purchases/<int:id>/print')
+@login_required
+def purchase_print(id):
+    purchase = Purchase.query.get_or_404(id)
+    gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
+    copies_raw = gs.get('print_auto_copies') or '1'
+    try:
+        copies = int(float(copies_raw))
+    except Exception:
+        copies = 1
+    copies = max(1, min(copies, 10))
+    return render_template(
+        'purchase_print.html',
+        purchase=purchase,
+        print_mode=(gs.get('print_mode') or 'normal'),
+        print_paper_size=(gs.get('print_paper_size') or 'A4'),
+        print_auto_copies=copies,
+        auto_print_requested=(request.args.get('autoprint') == '1'),
+    )
 
 
 # ===== USER MANAGEMENT - TOGGLE ACTIVE =====
