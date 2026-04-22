@@ -22,11 +22,11 @@
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px;">
     <div class="stat-card">
         <div class="stat-icon gold"><i class="fas fa-arrow-up"></i></div>
-        <div><div class="stat-value" style="color:var(--success);">{{ "{:,.2f}".format(total_sales) }}</div><div class="stat-label">إيرادات المبيعات</div></div>
+        <div><div class="stat-value" style="color:var(--success);">{{ "{:,.2f}".format(total_sales) }}</div><div class="stat-label">صافي إيرادات المبيعات</div></div>
     </div>
     <div class="stat-card">
         <div class="stat-icon blue"><i class="fas fa-arrow-down"></i></div>
-        <div><div class="stat-value" style="color:var(--danger);">{{ "{:,.2f}".format(total_purchases) }}</div><div class="stat-label">تكلفة المشتريات</div></div>
+        <div><div class="stat-value" style="color:var(--danger);">{{ "{:,.2f}".format(total_purchases) }}</div><div class="stat-label">صافي تكلفة المشتريات</div></div>
     </div>
     <div class="stat-card" style="border-color: {% if gross_profit >= 0 %}rgba(16,185,129,0.4){% else %}rgba(239,68,68,0.4){% endif %}">
         <div class="stat-icon {{ 'green' if gross_profit >= 0 else 'red' }}"><i class="fas fa-chart-line"></i></div>
@@ -51,11 +51,17 @@
         <div class="card-header"><div class="card-title" style="color:var(--success);"><i class="fas fa-plus-circle"></i> الإيرادات</div></div>
         <div class="card-body">
             <div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">
-                <span>إيرادات المبيعات</span>
-                <span style="font-weight:700;color:var(--success);">{{ "{:,.2f}".format(total_sales) }}</span>
+                <span>إجمالي المبيعات</span>
+                <span style="font-weight:700;color:var(--success);">{{ "{:,.2f}".format(total_sales_gross) }}</span>
             </div>
-            <div style="display:flex;justify-content:space-between;padding:14px 0;font-size:16px;font-weight:800;">
-                <span>الإجمالي</span>
+            {% if total_sale_returns > 0 %}
+            <div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">
+                <span style="color:var(--danger);">مرتجعات المبيعات</span>
+                <span style="font-weight:700;color:var(--danger);">- {{ "{:,.2f}".format(total_sale_returns) }}</span>
+            </div>
+            {% endif %}
+            <div style="display:flex;justify-content:space-between;padding:14px 0;font-size:16px;font-weight:800;border-top:2px solid var(--border);">
+                <span>صافي الإيرادات</span>
                 <span style="color:var(--success);">{{ "{:,.2f}".format(total_sales) }}</span>
             </div>
         </div>
@@ -64,14 +70,24 @@
         <div class="card-header"><div class="card-title" style="color:var(--danger);"><i class="fas fa-minus-circle"></i> المصاريف والتكاليف</div></div>
         <div class="card-body">
             <div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">
-                <span>تكلفة البضاعة المباعة</span>
+                <span>إجمالي المشتريات</span>
+                <span style="font-weight:700;color:var(--danger);">{{ "{:,.2f}".format(total_purchases_gross) }}</span>
+            </div>
+            {% if total_purchase_returns > 0 %}
+            <div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">
+                <span style="color:var(--success);">مرتجعات المشتريات</span>
+                <span style="font-weight:700;color:var(--success);">- {{ "{:,.2f}".format(total_purchase_returns) }}</span>
+            </div>
+            {% endif %}
+            <div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">
+                <span>صافي تكلفة البضاعة</span>
                 <span style="font-weight:700;color:var(--danger);">{{ "{:,.2f}".format(total_purchases) }}</span>
             </div>
             <div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">
                 <span>المصاريف التشغيلية</span>
                 <span style="font-weight:700;color:var(--danger);">{{ "{:,.2f}".format(total_expenses) }}</span>
             </div>
-            <div style="display:flex;justify-content:space-between;padding:14px 0;font-size:16px;font-weight:800;">
+            <div style="display:flex;justify-content:space-between;padding:14px 0;font-size:16px;font-weight:800;border-top:2px solid var(--border);">
                 <span>الإجمالي</span>
                 <span style="color:var(--danger);">{{ "{:,.2f}".format(total_purchases + total_expenses) }}</span>
             </div>
