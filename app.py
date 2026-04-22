@@ -1740,7 +1740,27 @@ def delete_customer(id):
 def customer_payment(id):
     customer = Customer.query.get_or_404(id)
     amount = float(request.form['amount'])
-    payment = CustomerPayment(customer_id=id, amount=amount, notes=request.form.get('notes'), user_id=current_user.id)
+    notes = request.form.get('notes') or ''
+
+    # توزيع الدفعة على الفواتير الآجلة من الأقدم للأحدث
+    remaining_amount = amount
+    pending_sales = Sale.query.filter_by(customer_id=id).filter(Sale.remaining > 0).order_by(Sale.date.asc()).all()
+    affected_invoices = []
+    for sale in pending_sales:
+        if remaining_amount <= 0:
+            break
+        pay_this = min(remaining_amount, sale.remaining)
+        sale.paid += pay_this
+        sale.remaining -= pay_this
+        remaining_amount -= pay_this
+        affected_invoices.append(sale.invoice_number)
+
+    payment = CustomerPayment(
+        customer_id=id,
+        amount=amount,
+        notes=notes or ('دفعة على فواتير: ' + ', '.join(affected_invoices) if affected_invoices else 'دفعة عامة'),
+        user_id=current_user.id
+    )
     customer.balance -= amount
     db.session.add(payment)
     db.session.commit()
@@ -1889,10 +1909,25 @@ def new_sale():
     customers = Customer.query.filter_by(is_active=True).all()
     warehouses = Warehouse.query.filter_by(is_active=True).all()
     gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
+
+    # العميل الأكثر استخداماً
+    top_customer = db.session.query(Sale.customer_id, db.func.count(Sale.id).label('cnt'))\
+        .filter(Sale.customer_id != None)\
+        .group_by(Sale.customer_id).order_by(db.text('cnt DESC')).first()
+    default_customer_id = top_customer[0] if top_customer else None
+
+    # المخزن الأكثر استخداماً في المبيعات
+    top_warehouse = db.session.query(Sale.warehouse_id, db.func.count(Sale.id).label('cnt'))\
+        .filter(Sale.warehouse_id != None)\
+        .group_by(Sale.warehouse_id).order_by(db.text('cnt DESC')).first()
+    default_warehouse_id = top_warehouse[0] if top_warehouse else (warehouses[0].id if warehouses else None)
+
     return render_template(
         'sale_form.html',
         customers=customers,
         warehouses=warehouses,
+        default_customer_id=default_customer_id,
+        default_warehouse_id=default_warehouse_id,
         sale_tax_auto=(gs.get('sale_fixed_tax_enabled') or '0').strip() in ('1', 'true', 'on', 'yes'),
         sale_tax_percent=float(gs.get('sale_fixed_tax_percent') or 0),
     )
@@ -2035,7 +2070,25 @@ def new_purchase():
     
     suppliers = Supplier.query.filter_by(is_active=True).all()
     warehouses = Warehouse.query.filter_by(is_active=True).all()
-    return render_template('purchase_form.html', suppliers=suppliers, warehouses=warehouses)
+
+    # المورد الأكثر استخداماً
+    top_supplier = db.session.query(Purchase.supplier_id, db.func.count(Purchase.id).label('cnt'))\
+        .filter(Purchase.supplier_id != None)\
+        .group_by(Purchase.supplier_id).order_by(db.text('cnt DESC')).first()
+    default_supplier_id = top_supplier[0] if top_supplier else None
+
+    # المخزن الأكثر استخداماً في المشتريات
+    top_wh = db.session.query(Purchase.warehouse_id, db.func.count(Purchase.id).label('cnt'))\
+        .filter(Purchase.warehouse_id != None)\
+        .group_by(Purchase.warehouse_id).order_by(db.text('cnt DESC')).first()
+    default_warehouse_id = top_wh[0] if top_wh else (warehouses[0].id if warehouses else None)
+
+    return render_template('purchase_form.html',
+        suppliers=suppliers,
+        warehouses=warehouses,
+        default_supplier_id=default_supplier_id,
+        default_warehouse_id=default_warehouse_id,
+    )
 
 @app.route('/purchases/<int:id>')
 @login_required
@@ -3385,7 +3438,27 @@ def supplier_statement(id):
 def supplier_payment(id):
     supplier = Supplier.query.get_or_404(id)
     amount = float(request.form['amount'])
-    payment = SupplierPayment(supplier_id=id, amount=amount, notes=request.form.get('notes'), user_id=current_user.id)
+    notes = request.form.get('notes') or ''
+
+    # توزيع الدفعة على فواتير الشراء الآجلة من الأقدم للأحدث
+    remaining_amount = amount
+    pending_purchases = Purchase.query.filter_by(supplier_id=id).filter(Purchase.remaining > 0).order_by(Purchase.date.asc()).all()
+    affected_invoices = []
+    for purchase in pending_purchases:
+        if remaining_amount <= 0:
+            break
+        pay_this = min(remaining_amount, purchase.remaining)
+        purchase.paid += pay_this
+        purchase.remaining -= pay_this
+        remaining_amount -= pay_this
+        affected_invoices.append(purchase.invoice_number)
+
+    payment = SupplierPayment(
+        supplier_id=id,
+        amount=amount,
+        notes=notes or ('دفعة على فواتير: ' + ', '.join(affected_invoices) if affected_invoices else 'دفعة عامة'),
+        user_id=current_user.id
+    )
     supplier.balance -= amount
     db.session.add(payment)
     db.session.commit()
@@ -3785,6 +3858,29 @@ def sale_payment(id):
     db.session.commit()
     flash(f'تم تسجيل دفعة {amount:.2f} على الفاتورة {sale.invoice_number}', 'success')
     return redirect(url_for('sale_detail', id=id))
+
+
+# ===== QUICK SUPPLIER PAYMENT FROM PURCHASES =====
+@app.route('/purchases/<int:id>/payment', methods=['POST'])
+@login_required
+def purchase_payment(id):
+    purchase = Purchase.query.get_or_404(id)
+    amount = float(request.form['amount'])
+    if amount > purchase.remaining:
+        amount = purchase.remaining
+    purchase.paid += amount
+    purchase.remaining -= amount
+    if purchase.supplier_id:
+        supplier = Supplier.query.get(purchase.supplier_id)
+        if supplier:
+            supplier.balance -= amount
+    payment = SupplierPayment(supplier_id=purchase.supplier_id, amount=amount,
+                               notes=f'دفعة على فاتورة {purchase.invoice_number}',
+                               user_id=current_user.id)
+    db.session.add(payment)
+    db.session.commit()
+    flash(f'تم تسجيل دفعة {amount:.2f} على الفاتورة {purchase.invoice_number}', 'success')
+    return redirect(url_for('purchase_detail', id=id))
 
 
 # ===== INVOICE PRINT API =====
