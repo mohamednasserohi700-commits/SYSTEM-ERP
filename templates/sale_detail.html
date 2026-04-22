@@ -115,19 +115,23 @@
 {% endblock %}
 
 {% block extra_scripts %}
-{% if auto_print_requested %}
 <script>
 (function () {
-    var copies = {{ print_auto_copies|default(1) }};
-    var paper = '{{ print_paper_size|default("A4") }}';
-    var mode = '{{ print_mode|default("normal") }}';
-    var delay = 350;
-    for (let i = 0; i < copies; i++) {
-        setTimeout(function () {
-            window.open('{{ url_for("sale_print", id=sale.id) }}?autoprint=1&paper=' + encodeURIComponent(paper) + '&mode=' + encodeURIComponent(mode), '_blank');
-        }, i * delay);
+    var params = new URLSearchParams(window.location.search);
+    var shouldPrint = {% if auto_print_requested %}true{% else %}false{% endif %} || params.get('autoprint') === '1' || params.get('new') === '1';
+    if(shouldPrint){
+        var copies = {{ print_auto_copies|default(1) }};
+        var paper = '{{ print_paper_size|default("A4") }}';
+        var mode = '{{ print_mode|default("normal") }}';
+        var delay = 350;
+        for (var i = 0; i < copies; i++) {
+            (function(idx){
+                setTimeout(function () {
+                    window.open('{{ url_for("sale_print", id=sale.id) }}?autoprint=1&paper=' + encodeURIComponent(paper) + '&mode=' + encodeURIComponent(mode), '_blank');
+                }, idx * delay);
+            })(i);
+        }
     }
 })();
 </script>
-{% endif %}
 {% endblock %}

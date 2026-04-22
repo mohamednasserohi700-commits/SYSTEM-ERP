@@ -15,9 +15,33 @@
 <td>{{ s.date.strftime('%Y/%m/%d') }}</td>
 <td>{{ "{:,.2f}".format(s.total) }}</td>
 <td style="color:var(--success);">{{ "{:,.2f}".format(s.paid) }}</td>
-<td style="color:var(--danger);">{{ "{:,.2f}".format(s.remaining) }}</td>
+<td style="color:{{ 'var(--success)' if s.remaining == 0 else 'var(--danger)' }};">
+  {% if s.remaining == 0 %}
+    <span style="font-weight:700;">تم السداد</span>
+  {% else %}
+    {{ "{:,.2f}".format(s.remaining) }}
+  {% endif %}
+</td>
 </tr>{% else %}<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">لا توجد مبيعات</td></tr>{% endfor %}</tbody>
 </table></div></div>
+
+<div class="card" style="margin-bottom:16px;">
+<div class="card-header"><div class="card-title"><i class="fas fa-hand-holding-usd"></i> سجل الدفعات</div></div>
+<div class="table-container"><table>
+<thead><tr><th>التاريخ</th><th>المبلغ</th><th>ملاحظات</th></tr></thead>
+<tbody>
+{% for pay in payments %}
+<tr>
+  <td style="color:var(--text-muted);">{{ pay.date.strftime('%Y/%m/%d') }}</td>
+  <td style="color:var(--success);font-weight:700;">{{ "{:,.2f}".format(pay.amount) }}</td>
+  <td>{{ pay.notes or '—' }}</td>
+</tr>
+{% else %}
+<tr><td colspan="3" style="text-align:center;color:var(--text-muted);">لا توجد دفعات مسجلة</td></tr>
+{% endfor %}
+</tbody>
+</table></div></div>
+
 </div>
 <div>
 <div class="card" style="margin-bottom:16px;">

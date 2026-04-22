@@ -95,22 +95,41 @@
         </div>
     </div>
 </div>
+
+{% if purchase.remaining > 0 %}
+<div class="card" style="margin-top: 20px; border-color: rgba(16,185,129,.3);">
+    <div class="card-header"><div class="card-title" style="color:var(--success);"><i class="fas fa-money-bill-wave"></i> تسجيل دفعة على الفاتورة</div></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('purchase_payment', id=purchase.id) }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+            <div class="form-group" style="margin:0;flex:1;min-width:200px;">
+                <label class="form-label">المبلغ (المتبقي: {{ "{:,.2f}".format(purchase.remaining) }})</label>
+                <input type="number" name="amount" class="form-control" step="0.01" min="0.01" max="{{ purchase.remaining }}" value="{{ purchase.remaining }}" required>
+            </div>
+            <button type="submit" class="btn btn-success" style="padding: 9px 20px;"><i class="fas fa-check"></i> تسجيل الدفعة</button>
+        </form>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
-{% if auto_print_requested %}
 <script>
 (function () {
-    var copies = {{ print_auto_copies|default(1) }};
-    var paper = '{{ print_paper_size|default("A4") }}';
-    var mode = '{{ print_mode|default("normal") }}';
-    var delay = 350;
-    for (let i = 0; i < copies; i++) {
-        setTimeout(function () {
-            window.open('{{ url_for("purchase_print", id=purchase.id) }}?autoprint=1&paper=' + encodeURIComponent(paper) + '&mode=' + encodeURIComponent(mode), '_blank');
-        }, i * delay);
+    var params = new URLSearchParams(window.location.search);
+    var shouldPrint = {% if auto_print_requested %}true{% else %}false{% endif %} || params.get('autoprint') === '1' || params.get('new') === '1';
+    if(shouldPrint){
+        var copies = {{ print_auto_copies|default(1) }};
+        var paper = '{{ print_paper_size|default("A4") }}';
+        var mode = '{{ print_mode|default("normal") }}';
+        var delay = 350;
+        for (var i = 0; i < copies; i++) {
+            (function(idx){
+                setTimeout(function () {
+                    window.open('{{ url_for("purchase_print", id=purchase.id) }}?autoprint=1&paper=' + encodeURIComponent(paper) + '&mode=' + encodeURIComponent(mode), '_blank');
+                }, idx * delay);
+            })(i);
+        }
     }
 })();
 </script>
-{% endif %}
 {% endblock %}

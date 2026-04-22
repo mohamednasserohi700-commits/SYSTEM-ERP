@@ -45,8 +45,13 @@
     </table>
     <div class="total">الإجمالي: {{ "{:,.2f}".format(ret.total) }}</div>
     </div>
-{% if auto_print_requested %}
-<script>window.onload = () => window.print();</script>
-{% endif %}
+<script>
+(function(){
+    var params = new URLSearchParams(window.location.search);
+    if(params.get('autoprint') === '1' || document.referrer.includes('/sale_return/') || document.referrer.includes('/sale-return/')){
+        window.onload = function(){ window.print(); };
+    }
+})();
+</script>
 </body>
 </html>

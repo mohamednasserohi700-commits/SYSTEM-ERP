@@ -57,16 +57,16 @@
                     <div class="form-grid-3">
                         <div class="form-group">
                             <label class="form-label">العميل</label>
-                            <select name="customer_id" class="form-control">
+                            <select name="customer_id" class="form-control" id="customerSelect">
                                 <option value="">— عميل نقدي —</option>
-                                {% for c in customers %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                                {% for c in customers %}<option value="{{ c.id }}" {% if default_customer_id and c.id == default_customer_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
                             </select>
                         </div>
                         <div class="form-group">
                             <label class="form-label">المخزن *</label>
                             <select name="warehouse_id" class="form-control" required id="warehouseId" onchange="updateWarehouse()">
                                 <option value="">اختر المخزن...</option>
-                                {% for wh in warehouses %}<option value="{{ wh.id }}">{{ wh.name }}</option>{% endfor %}
+                                {% for wh in warehouses %}<option value="{{ wh.id }}" {% if default_warehouse_id and wh.id == default_warehouse_id %}selected{% endif %}>{{ wh.name }}</option>{% endfor %}
                             </select>
                         </div>
                         <div class="form-group">

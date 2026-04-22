@@ -113,8 +113,13 @@
     </button>
     <button onclick="window.close()" style="padding:10px 24px;background:#eee;border:none;border-radius:8px;font-family:Cairo;font-size:14px;cursor:pointer;margin-right:8px;">إغلاق</button>
 </div>
-{% if auto_print_requested %}
-<script>window.onload = () => window.print();</script>
-{% endif %}
+<script>
+(function(){
+    var params = new URLSearchParams(window.location.search);
+    if(params.get('autoprint') === '1' || document.referrer.includes('/purchase/')){
+        window.onload = function(){ window.print(); };
+    }
+})();
+</script>
 </body>
 </html>
