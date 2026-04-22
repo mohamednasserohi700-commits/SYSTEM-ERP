@@ -3514,8 +3514,14 @@ def report_dashboard():
     top_customers = db.session.query(
         Customer.name, func.sum(Sale.total).label('total')
     ).join(Sale).group_by(Customer.id).order_by(db.desc('total')).limit(5).all()
-    total_sales = db.session.query(func.sum(Sale.total)).scalar() or 0
-    total_purchases = db.session.query(func.sum(Purchase.total)).scalar() or 0
+    total_sales_gross = db.session.query(func.sum(Sale.total)).scalar() or 0
+    total_sale_returns = db.session.query(func.sum(SaleReturn.total)).scalar() or 0
+    total_sales = float(total_sales_gross) - float(total_sale_returns)
+
+    total_purchases_gross = db.session.query(func.sum(Purchase.total)).scalar() or 0
+    total_purchase_returns = db.session.query(func.sum(PurchaseReturn.total)).scalar() or 0
+    total_purchases = float(total_purchases_gross) - float(total_purchase_returns)
+
     total_expenses = db.session.query(func.sum(Expense.amount)).scalar() or 0
     total_receivables = db.session.query(func.sum(Customer.balance)).scalar() or 0
     total_payables = db.session.query(func.sum(Supplier.balance)).scalar() or 0
@@ -3538,15 +3544,31 @@ def report_profit():
     sales = Sale.query.filter(db.func.date(Sale.date).between(date_from, date_to)).all()
     expenses = Expense.query.filter(db.func.date(Expense.date).between(date_from, date_to)).all()
     purchases = Purchase.query.filter(db.func.date(Purchase.date).between(date_from, date_to)).all()
-    total_sales = sum(s.total for s in sales)
+    sale_returns = SaleReturn.query.filter(db.func.date(SaleReturn.date).between(date_from, date_to)).all()
+    purchase_returns = PurchaseReturn.query.filter(db.func.date(PurchaseReturn.date).between(date_from, date_to)).all()
+
+    total_sales_gross = sum(s.total for s in sales)
+    total_sale_returns = sum(r.total for r in sale_returns)
+    total_sales = total_sales_gross - total_sale_returns
+
+    total_purchases_gross = sum(p.total for p in purchases)
+    total_purchase_returns = sum(r.total for r in purchase_returns)
+    total_purchases = total_purchases_gross - total_purchase_returns
+
     total_expenses = sum(e.amount for e in expenses)
-    total_purchases = sum(p.total for p in purchases)
     gross_profit = total_sales - total_purchases
     net_profit = gross_profit - total_expenses
     return render_template('report_profit.html',
         date_from=date_from, date_to=date_to,
-        total_sales=total_sales, total_purchases=total_purchases, total_expenses=total_expenses,
-        gross_profit=gross_profit, net_profit=net_profit, sales=sales, expenses=expenses)
+        total_sales=total_sales,
+        total_sales_gross=total_sales_gross,
+        total_sale_returns=total_sale_returns,
+        total_purchases=total_purchases,
+        total_purchases_gross=total_purchases_gross,
+        total_purchase_returns=total_purchase_returns,
+        total_expenses=total_expenses,
+        gross_profit=gross_profit, net_profit=net_profit,
+        sales=sales, expenses=expenses)
 
 @app.route('/reports/customers')
 @login_required
