@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5, viewport-fit=cover">
     <title>تسجيل الدخول | {{ app_brand_title | default('نظام ERP 2026') }}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Roboto:wght@400;500;700&family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet"></noscript>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
         :root{
@@ -679,6 +682,71 @@
             .form-side,.hero-side{padding: 22px 16px}
             .headline{font-size: 26px}
         }
+
+        /* ============================================================
+           Mobile Performance — تحسين الأداء على الهواتف
+           لا تغيير في الألوان أو الثيم — فقط إيقاف العمليات الثقيلة
+           ============================================================ */
+        @media (max-width: 768px) {
+            /* إيقاف جميع الـ animations الثقيلة */
+            .bg::before {
+                animation: none !important;
+                filter: none !important;
+                /* تثبيت الخلفية بدل تحريكها */
+                transform: translate(0,0) scale(1) !important;
+            }
+            /* إخفاء الجسيمات المتحركة — أثقل عنصر في الصفحة */
+            .particle {
+                display: none !important;
+            }
+            /* إيقاف دوران الـ lock */
+            .lock-wrap {
+                animation: none !important;
+            }
+            /* إيقاف enter animations — تسرّع وقت الرسم الأول */
+            .stagger {
+                animation: none !important;
+                opacity: 1 !important;
+                transform: none !important;
+            }
+            /* إزالة backdrop-filter من الـ inputs — ثقيل جداً */
+            .input {
+                backdrop-filter: none !important;
+                -webkit-backdrop-filter: none !important;
+            }
+            /* إزالة backdrop-filter من الـ lock-card */
+            .lock-card {
+                backdrop-filter: none !important;
+                -webkit-backdrop-filter: none !important;
+            }
+            /* تخفيف backdrop-filter الرئيسي للكارد */
+            .page {
+                backdrop-filter: blur(8px) !important;
+                -webkit-backdrop-filter: blur(8px) !important;
+            }
+            /* تخفيف blur الخلفية الشبكية */
+            .bg::after {
+                display: none !important;
+            }
+            /* إيقاف will-change الضمني */
+            .feat, .pill, .btn, .chip, .about-btn {
+                transition: none !important;
+            }
+            /* تبسيط hero-side على الموبايل */
+            .hero-side {
+                background:
+                    radial-gradient(ellipse 90% 80% at 50% 50%, rgba(0,102,255,.10) 0%, transparent 70%) !important;
+            }
+        }
+
+        /* لمن يفضّل تقليل الحركة في إعدادات الجهاز */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -912,7 +980,7 @@
 
         (function(){
             function readCookie(name){
-                var m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()\\[\\]\\\\/+^]/g, '\\$&') + '=([^;]*)'));
+                var m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()[\]\/+^]/g, '\\$&') + '=([^;]*)'));
                 return m ? decodeURIComponent(m[1]) : '';
             }
             function makeId(){
