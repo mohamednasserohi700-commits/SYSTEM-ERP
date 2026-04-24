@@ -1434,10 +1434,13 @@ def dashboard():
     today = date.today()
     sales_today = db.session.query(db.func.sum(Sale.total)).filter(
         db.func.date(Sale.date) == today).scalar() or 0
+    sale_returns_today = db.session.query(db.func.sum(SaleReturn.total)).filter(
+        db.func.date(SaleReturn.date) == today).scalar() or 0
+    net_sales_after_returns = float(sales_today) - float(sale_returns_today)
     purchases_today = db.session.query(db.func.sum(Purchase.total)).filter(
         db.func.date(Purchase.date) == today).scalar() or 0
-    customers_count = Customer.query.filter_by(is_active=True).count()
-    products_count = Product.query.filter_by(is_active=True).count()
+    customers_count = sale_returns_today
+    products_count = net_sales_after_returns
     pending_transfers = _pending_transfers_count_for_user(current_user)
     low_stock = db.session.query(Stock).join(Product).filter(
         Stock.quantity <= Product.min_stock, Product.min_stock > 0, Product.is_active == True).count()
@@ -3609,10 +3612,13 @@ def api_dashboard_kpi():
     today = date.today()
     sales_today = db.session.query(db.func.sum(Sale.total)).filter(
         db.func.date(Sale.date) == today).scalar() or 0
+    sale_returns_today = db.session.query(db.func.sum(SaleReturn.total)).filter(
+        db.func.date(SaleReturn.date) == today).scalar() or 0
+    net_sales_after_returns = float(sales_today) - float(sale_returns_today)
     purchases_today = db.session.query(db.func.sum(Purchase.total)).filter(
         db.func.date(Purchase.date) == today).scalar() or 0
-    customers_count = Customer.query.filter_by(is_active=True).count()
-    products_count = Product.query.filter_by(is_active=True).count()
+    customers_count = sale_returns_today
+    products_count = net_sales_after_returns
     pending_transfers = _pending_transfers_count_for_user(current_user)
     low_stock = db.session.query(Stock).join(Product).filter(
         Stock.quantity <= Product.min_stock, Product.min_stock > 0, Product.is_active == True).count()
