@@ -117,15 +117,21 @@
             display:flex; align-items:center; gap:10px; min-width:0;
         }
         .brand-badge{
-            width:42px; height:42px;
-            border-radius: 12px;
+            width:70px; height:70px;
+            border-radius: 16px;
             display:flex; align-items:center; justify-content:center;
-            font-family:Poppins, sans-serif;
-            font-weight:700;
-            letter-spacing: .8px;
-            color:#fff;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            box-shadow: 0 0 0 1px rgba(255,255,255,.10), 0 14px 38px rgba(0,102,255,.25);
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            overflow: visible;
+        }
+        .brand-badge img{
+            width:100%;
+            height:100%;
+            object-fit:contain;
+            border-radius:0;
+            display:block;
+            filter: drop-shadow(0 6px 18px rgba(0,0,0,.35));
         }
         .brand-title{
             font-family:Poppins, sans-serif;
@@ -688,54 +694,60 @@
            لا تغيير في الألوان أو الثيم — فقط إيقاف العمليات الثقيلة
            ============================================================ */
         @media (max-width: 768px) {
-            /* إيقاف جميع الـ animations الثقيلة */
+            /* Preserve the same UI look while reducing GPU-heavy effects */
             .bg::before {
                 animation: none !important;
-                filter: none !important;
-                /* تثبيت الخلفية بدل تحريكها */
+                filter: blur(8px) !important;
                 transform: translate(0,0) scale(1) !important;
             }
-            /* إخفاء الجسيمات المتحركة — أثقل عنصر في الصفحة */
             .particle {
                 display: none !important;
             }
-            /* إيقاف دوران الـ lock */
             .lock-wrap {
                 animation: none !important;
             }
-            /* إيقاف enter animations — تسرّع وقت الرسم الأول */
             .stagger {
                 animation: none !important;
                 opacity: 1 !important;
                 transform: none !important;
             }
-            /* إزالة backdrop-filter من الـ inputs — ثقيل جداً */
-            .input {
-                backdrop-filter: none !important;
-                -webkit-backdrop-filter: none !important;
+            .page {
+                backdrop-filter: blur(6px) !important;
+                -webkit-backdrop-filter: blur(6px) !important;
+                box-shadow: 0 14px 42px rgba(0,0,0,.42) !important;
             }
-            /* إزالة backdrop-filter من الـ lock-card */
+            .top-bar,
+            .modal,
+            .about-popup,
+            .modal-card,
+            .input,
             .lock-card {
                 backdrop-filter: none !important;
                 -webkit-backdrop-filter: none !important;
             }
-            /* تخفيف backdrop-filter الرئيسي للكارد */
-            .page {
-                backdrop-filter: blur(8px) !important;
-                -webkit-backdrop-filter: blur(8px) !important;
-            }
-            /* تخفيف blur الخلفية الشبكية */
             .bg::after {
-                display: none !important;
+                opacity: .10 !important;
+                background-size: 56px 56px !important;
             }
-            /* إيقاف will-change الضمني */
-            .feat, .pill, .btn, .chip, .about-btn {
+            .feat, .pill, .btn, .chip, .about-btn, .top-nav a, .top-nav button, .action {
                 transition: none !important;
             }
-            /* تبسيط hero-side على الموبايل */
+            .lock-card {
+                box-shadow:
+                    0 14px 36px rgba(0,0,0,.36),
+                    0 0 0 1px rgba(0,212,255,.10) !important;
+                transform: translateZ(0) rotateX(6deg) rotateY(-8deg) !important;
+            }
             .hero-side {
                 background:
-                    radial-gradient(ellipse 90% 80% at 50% 50%, rgba(0,102,255,.10) 0%, transparent 70%) !important;
+                    radial-gradient(ellipse 78% 62% at 30% 30%, rgba(0,102,255,.14) 0%, transparent 60%),
+                    radial-gradient(ellipse 74% 64% at 70% 75%, rgba(236,72,153,.09) 0%, transparent 60%),
+                    linear-gradient(135deg, rgba(255,255,255,.04), rgba(255,255,255,.02)) !important;
+            }
+            .form-side,
+            .hero-side {
+                content-visibility: auto;
+                contain: layout paint style;
             }
         }
 
@@ -761,7 +773,9 @@
     <div class="page">
         <div class="top-bar">
             <div class="brand">
-                <div class="brand-badge">ERP</div>
+                <div class="brand-badge">
+                    <img src="{{ url_for('static', filename='img/logo-makers-erp-3d.png') }}" alt="Makers ERP">
+                </div>
                 <div style="min-width:0">
                     <div class="brand-title">{{ app_brand_title | default('نظام ERP 2026') }}</div>
                     <div class="brand-sub">ERP 2026 — لوحة دخول آمنة</div>

@@ -49,17 +49,17 @@
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-icon green"><i class="fas fa-users"></i></div>
+        <div class="stat-icon green"><i class="fas fa-rotate-left"></i></div>
         <div>
-            <div class="stat-value" id="kpi-customers">{{ customers_count }}</div>
-            <div class="stat-label">إجمالي العملاء</div>
+            <div class="stat-value" id="kpi-customers">{{ "{:,.0f}".format(customers_count) }}</div>
+            <div class="stat-label">مرتجع اليوم (ج.م)</div>
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-icon purple"><i class="fas fa-boxes"></i></div>
+        <div class="stat-icon purple"><i class="fas fa-chart-line"></i></div>
         <div>
-            <div class="stat-value" id="kpi-products">{{ products_count }}</div>
-            <div class="stat-label">إجمالي الأصناف</div>
+            <div class="stat-value" id="kpi-products">{{ "{:,.0f}".format(products_count) }}</div>
+            <div class="stat-label">صافي البيع بعد المرتجع (ج.م)</div>
         </div>
     </div>
     <div class="stat-card" {% if pending_transfers > 0 %}style="border-color:rgba(245,158,11,.4)"{% endif %}>
@@ -258,8 +258,8 @@ Chart.defaults.font = { family: 'Cairo, sans-serif', size: 11 };
             var el = function(id){ return document.getElementById(id); };
             if(el('kpi-sales-today')) el('kpi-sales-today').textContent = fmt(d.sales_today);
             if(el('kpi-purchases-today')) el('kpi-purchases-today').textContent = fmt(d.purchases_today);
-            if(el('kpi-customers')) el('kpi-customers').textContent = d.customers_count;
-            if(el('kpi-products')) el('kpi-products').textContent = d.products_count;
+            if(el('kpi-customers')) el('kpi-customers').textContent = fmt(d.customers_count);
+            if(el('kpi-products')) el('kpi-products').textContent = fmt(d.products_count);
             if(el('kpi-pending-tr')){
                 el('kpi-pending-tr').textContent = d.pending_transfers;
                 el('kpi-pending-tr').style.color = d.pending_transfers > 0 ? 'var(--accent)' : '';

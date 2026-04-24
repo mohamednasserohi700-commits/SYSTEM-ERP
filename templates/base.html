@@ -155,11 +155,25 @@
             box-shadow: -18px 0 54px rgba(0,0,0,.32);
         }
         .sidebar-nav{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.08) transparent}
-        .sidebar-logo{padding:19px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0}
-        .logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--accent),#e07b00);border-radius:10px;
-            display:flex;align-items:center;justify-content:center;font-size:15px;color:#0f1422;font-weight:900;
-            box-shadow:var(--glow);flex-shrink:0;font-family:'Tajawal',sans-serif}
-        .logo-text .name{font-size:17px;font-weight:800;color:var(--text);line-height:1;font-family:'Tajawal',sans-serif}
+        .sidebar-logo{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0}
+        .logo-icon{width:68px;height:68px;background:linear-gradient(135deg,var(--accent),#e07b00);border-radius:16px;
+            display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.10);
+            box-shadow:var(--glow);flex-shrink:0;font-family:'Tajawal',sans-serif;overflow:hidden}
+        .logo-icon{
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            overflow: visible;
+        }
+        .logo-icon img{
+            width:100%;
+            height:100%;
+            object-fit:contain;
+            border-radius:0;
+            display:block;
+            filter: drop-shadow(0 6px 18px rgba(0,0,0,.35));
+        }
+        .logo-text .name{font-size:16px;font-weight:800;color:var(--text);line-height:1.15;font-family:'Tajawal',sans-serif}
         .logo-text .sub{font-size:10.5px;color:var(--text-muted);margin-top:3px}
         .nav-section{padding:13px 10px 5px}
         .nav-label{font-size:9.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1.8px;font-weight:700;
@@ -511,9 +525,11 @@
 
 <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
-        <div class="logo-icon">ERP</div>
+        <div class="logo-icon">
+            <img src="{{ url_for('static', filename='img/logo-makers-erp-3d.png') }}" alt="Makers ERP">
+        </div>
         <div class="logo-text">
-            <div class="name" style="font-size:14px;line-height:1.25;">{{ app_brand_title }}</div>
+            <div class="name" style="font-size:16px;line-height:1.25;">{{ app_brand_title }}</div>
             <div class="sub">{{ app_subtitle_brand }}</div>
         </div>
     </div>
