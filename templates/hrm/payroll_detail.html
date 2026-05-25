@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% from 'hrm/_macros.html' import hrm_nav %}
+{% set block_icon = 'fas fa-hand-holding-usd' %}
+{% block title %}صرف رواتب — {{ payroll.period_year }}/{{ '%02d'|format(payroll.period_month) }}{% endblock %}
+{% block page_title %}صرف رواتب {{ payroll.period_year }}/{{ '%02d'|format(payroll.period_month) }}{% endblock %}
+{% block topbar_actions %}
+{% if payroll.status=='draft' %}
+<form method="POST" action="{{ url_for('hrm_payroll_approve', id=payroll.id) }}" style="display:inline">
+<button type="submit" class="btn btn-success" onclick="return confirm('اعتماد المسير وإنشاء قيد الاستحقاق؟')"><i class="fas fa-check-double"></i> اعتماد المسير</button>
+</form>
+{% endif %}
+{% if payroll.status=='approved' and summary.pending_amount > 0 %}
+<form method="POST" action="{{ url_for('hrm_payroll_pay', id=payroll.id) }}" style="display:inline" onsubmit="return confirm('صرف رواتب كل الموظفين المتبقين؟')">
+<select name="payment_method" class="form-control" style="display:inline;width:auto;">
+<option value="cash">صندوق</option><option value="bank">بنك</option>
+</select>
+<button type="submit" class="btn btn-primary"><i class="fas fa-coins"></i> صرف الكل</button>
+</form>
+{% endif %}
+{% endblock %}
+{% block content %}
+{{ hrm_nav('payroll') }}
+
+<div class="stats-grid" style="margin-bottom:16px;">
+<div class="stat-card"><div class="stat-value">{{ "{:,.2f}".format(payroll.total_gross or 0) }}</div><div class="stat-label">إجمالي المستحق</div></div>
+<div class="stat-card"><div class="stat-value" style="color:var(--success);">{{ "{:,.2f}".format(payroll.total_net or 0) }}</div><div class="stat-label">صافي الرواتب</div></div>
+<div class="stat-card"><div class="stat-value" style="color:var(--accent);">{{ "{:,.2f}".format(summary.paid_amount) }}</div><div class="stat-label">تم صرفه</div></div>
+<div class="stat-card"><div class="stat-value" style="color:var(--warning);">{{ "{:,.2f}".format(summary.pending_amount) }}</div><div class="stat-label">متبقي للصرف</div></div>
+</div>
+
+<div class="alert alert-info" style="margin-bottom:14px;">
+<i class="fas fa-info-circle"></i>
+الحالة: <strong>{{ status_label }}</strong> —
+تم صرف <strong>{{ summary.paid_count }}</strong> من <strong>{{ summary.total_count }}</strong> موظف.
+الضريبة {{ rates.tax_percent }}% | تأمينات {{ rates.insurance_employee_percent }}%
+<a href="{{ url_for('hrm_tax_insurance') }}" style="margin-right:8px;">تعديل النسب</a>
+</div>
+
+{% if payroll.status in ['approved', 'paid'] and summary.pending_amount > 0 %}
+<form method="POST" action="{{ url_for('hrm_payroll_pay_selected', id=payroll.id) }}" id="payrollBulkForm">
+<div class="card" style="margin-bottom:12px;"><div class="card-body" style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+<button type="button" class="btn btn-outline btn-sm" onclick="document.querySelectorAll('.pay-chk').forEach(c=>c.checked=true)">تحديد الكل</button>
+<select name="payment_method" class="form-control" style="width:auto;">
+<option value="cash">صندوق</option><option value="bank">بنك</option>
+</select>
+<button type="submit" class="btn btn-success btn-sm" onclick="return confirm('صرف المحددين؟')"><i class="fas fa-check"></i> صرف المحددين</button>
+</div></div>
+{% endif %}
+
+<div class="card"><div class="table-container"><table>
+<thead><tr>
+{% if payroll.status in ['approved', 'paid'] and summary.pending_amount > 0 %}<th style="width:36px;"></th>{% endif %}
+<th>الموظف</th><th>أساسي</th><th>بدلات</th><th>ضريبة</th><th>تأمينات</th><th>خصومات</th><th>سلف</th><th>الصافي</th><th>حالة الصرف</th><th>إجراء</th>
+</tr></thead>
+<tbody>
+{% for d in payroll.details %}
+<tr {% if d.is_paid %}style="opacity:.75;"{% endif %}>
+{% if payroll.status in ['approved', 'paid'] and summary.pending_amount > 0 %}
+<td>{% if not d.is_paid %}<input type="checkbox" class="pay-chk" name="detail_id" value="{{ d.id }}" form="payrollBulkForm">{% endif %}</td>
+{% endif %}
+<td style="font-weight:600;">{{ d.employee.name if d.employee else d.employee_id }}</td>
+<td>{{ "{:,.2f}".format(d.basic_salary or 0) }}</td>
+<td>{{ "{:,.2f}".format(d.allowances or 0) }}</td>
+<td style="color:var(--danger);">{{ "{:,.2f}".format(d.taxes or 0) }}</td>
+<td style="color:var(--danger);">{{ "{:,.2f}".format(d.insurance or 0) }}</td>
+<td>{{ "{:,.2f}".format(d.deductions or 0) }}</td>
+<td>{{ "{:,.2f}".format(d.loans or 0) }}</td>
+<td style="font-weight:800;color:var(--success);">{{ "{:,.2f}".format(d.net_salary or 0) }}</td>
+<td>
+{% if d.is_paid %}<span class="badge badge-success"><i class="fas fa-check"></i> مُصرف</span>
+<small style="display:block;color:var(--text-muted);">{{ d.payment_method or '' }}</small>
+{% else %}<span class="badge badge-warning">بانتظار الصرف</span>{% endif %}
+</td>
+<td style="white-space:nowrap;">
+{% if not d.is_paid and payroll.status in ['approved', 'paid'] %}
+<form method="POST" action="{{ url_for('hrm_payroll_pay_employee', id=payroll.id, detail_id=d.id) }}" style="display:inline">
+<select name="payment_method" class="form-control" style="width:90px;display:inline;font-size:11px;padding:4px 6px;">
+<option value="cash">صندوق</option><option value="bank">بنك</option>
+</select>
+<button type="submit" class="btn btn-success btn-xs" onclick="return confirm('تأكيد صرف {{ d.net_salary }} ج.م؟')"><i class="fas fa-money-bill-wave"></i> قبض</button>
+</form>
+{% endif %}
+<a href="{{ url_for('hrm_payslip', id=payroll.id, emp_id=d.employee_id) }}" target="_blank" class="btn btn-outline btn-xs" title="كشف مرتب"><i class="fas fa-print"></i></a>
+</td>
+</tr>
+{% endfor %}
+</tbody>
+<tfoot>
+<tr style="font-weight:700;background:rgba(59,130,246,.08);">
+<td colspan="{% if payroll.status in ['approved', 'paid'] and summary.pending_amount > 0 %}9{% else %}8{% endif %}">الإجمالي</td>
+<td style="color:var(--success);">{{ "{:,.2f}".format(payroll.total_net or 0) }}</td>
+<td colspan="2"></td>
+</tr>
+</tfoot>
+</table></div></div>
+{% if payroll.status in ['approved', 'paid'] and summary.pending_amount > 0 %}</form>{% endif %}
+{% endblock %}

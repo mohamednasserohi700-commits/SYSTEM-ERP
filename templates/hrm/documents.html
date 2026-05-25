@@ -1,0 +1,14 @@
+{% extends 'base.html' %}{% from 'hrm/_macros.html' import hrm_nav %}
+{% block title %}الوثائق{% endblock %}{% block page_title %}وثائق الموظفين{% endblock %}
+{% block content %}{{ hrm_nav('documents') }}
+<div class="card" style="max-width:520px;margin-bottom:14px;"><div class="card-body">
+<form method="POST" action="{{ url_for('hrm_document_upload') }}" enctype="multipart/form-data">
+<select name="employee_id" class="form-control" required>{% for e in employees %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}</select>
+<input name="title" class="form-control" required style="margin-top:8px;" placeholder="عنوان الوثيقة">
+<input name="doc_type" class="form-control" style="margin-top:8px;" placeholder="النوع">
+<input type="date" name="expiry_date" class="form-control" style="margin-top:8px;">
+<input type="file" name="file" class="form-control" style="margin-top:8px;">
+<button class="btn btn-primary btn-sm" style="margin-top:8px;">رفع</button></form></div></div>
+<div class="card"><table><thead><tr><th>موظف</th><th>العنوان</th><th>النوع</th><th>انتهاء</th></tr></thead>
+<tbody>{% for d in documents %}<tr><td>{{ d.employee.name if d.employee else '' }}</td><td>{{ d.title }}</td><td>{{ d.doc_type or '—' }}</td><td>{{ d.expiry_date or '—' }}</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

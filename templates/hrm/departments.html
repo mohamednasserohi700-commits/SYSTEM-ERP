@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% from 'hrm/_macros.html' import hrm_nav %}
+{% set block_icon = 'fas fa-sitemap' %}
+{% block title %}أقسام HR{% endblock %}
+{% block page_title %}الأقسام{% endblock %}
+{% block content %}
+{{ hrm_nav('departments') }}
+<div style="display:grid;grid-template-columns:1fr 340px;gap:18px;">
+<div class="card"><div class="table-container"><table>
+<thead><tr><th>القسم</th><th>المدير</th><th>عدد الموظفين</th><th></th></tr></thead>
+<tbody>{% for d in departments %}
+<tr><td style="font-weight:600;">{{ d.name }}</td>
+<td>{{ d.manager.name if d.manager else '—' }}</td>
+<td><span class="badge badge-info">{{ counts.get(d.id, 0) }}</span></td>
+<td>{% if can('record_delete') %}
+<form method="POST" action="{{ url_for('hrm_department_delete', id=d.id) }}" style="display:inline" onsubmit="return confirm('حذف القسم نهائياً؟ سيتم فك ربط الموظفين به.')"><button class="btn btn-danger btn-xs"><i class="fas fa-trash"></i></button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="4" class="empty-state">لا أقسام</td></tr>{% endfor %}
+</tbody></table></div></div>
+<div class="card"><div class="card-header"><div class="card-title">إضافة / تعديل قسم</div></div><div class="card-body">
+<form method="POST" action="{{ url_for('hrm_department_save') }}">
+<input type="hidden" name="id" id="deptId">
+<div class="form-group"><label class="form-label">اسم القسم *</label><input name="name" id="deptName" class="form-control" required></div>
+<div class="form-group"><label class="form-label">مدير القسم</label>
+<select name="manager_id" id="deptMgr" class="form-control"><option value="">—</option>
+{% for m in managers %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
+</select></div>
+<button class="btn btn-primary btn-sm"><i class="fas fa-save"></i> حفظ</button>
+</form></div></div>
+</div>
+{% endblock %}

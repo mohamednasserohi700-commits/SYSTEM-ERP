@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% from 'hrm/_macros.html' import hrm_nav %}
+{% set block_icon = 'fas fa-percentage' %}
+{% block title %}الضرائب والتأمينات{% endblock %}
+{% block page_title %}خصومات الضرائب والتأمينات{% endblock %}
+{% block content %}
+{{ hrm_nav('tax') }}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+<div class="card">
+<div class="card-header"><div class="card-title"><i class="fas fa-sliders-h"></i> النسب الافتراضية</div></div>
+<div class="card-body">
+<form method="POST" action="{{ url_for('hrm_tax_insurance') }}" id="statutoryRatesForm">
+<div class="form-group">
+<label class="form-label">ضريبة كسب العمل (%)</label>
+<input type="number" step="0.01" min="0" name="tax_percent" class="form-control" value="{{ rates.tax_percent }}" required>
+</div>
+<div class="form-group">
+<label class="form-label">التأمينات الاجتماعية — حصة الموظف (%)</label>
+<input type="number" step="0.01" min="0" name="insurance_employee_percent" class="form-control" value="{{ rates.insurance_employee_percent }}" required>
+<small style="color:var(--text-muted);">تُخصم من صافي الراتب</small>
+</div>
+<div class="form-group">
+<label class="form-label">التأمينات الاجتماعية — حصة الشركة (%)</label>
+<input type="number" step="0.01" min="0" name="insurance_employer_percent" class="form-control" value="{{ rates.insurance_employer_percent }}" required>
+<small style="color:var(--text-muted);">للمرجعية والتقارير — لا تُخصم من الموظف</small>
+</div>
+<div class="form-group">
+<label class="form-label">التأمين الصحي (%)</label>
+<input type="number" step="0.01" min="0" name="health_insurance_percent" class="form-control" value="{{ rates.health_insurance_percent }}" required>
+</div>
+<div style="display:flex;gap:10px;flex-wrap:wrap;">
+<button type="submit" name="action" value="save" class="btn btn-primary"><i class="fas fa-save"></i> حفظ الإعدادات</button>
+<button type="submit" name="action" value="apply_drafts" class="btn btn-warning" onclick="return confirm('حفظ النسب وتطبيقها على مسيرات المسودة؟')">
+<i class="fas fa-sync"></i> حفظ وتطبيق على المسودات
+</button>
+</div>
+</form>
+</div>
+</div>
+
+<div class="card">
+<div class="card-header"><div class="card-title"><i class="fas fa-calculator"></i> معاينة الحساب</div></div>
+<div class="card-body">
+<form method="GET" action="{{ url_for('hrm_tax_insurance') }}" style="display:flex;gap:10px;margin-bottom:16px;">
+<div class="form-group" style="margin:0;flex:1;"><label>راتب تجريبي (أساسي)</label>
+<input type="number" name="preview_salary" class="form-control" value="{{ preview_basic }}" step="100"></div>
+<button type="submit" class="btn btn-outline btn-sm" style="align-self:flex-end;">حساب</button>
+</form>
+<div class="stats-grid" style="grid-template-columns:1fr 1fr;">
+<div class="stat-card"><div class="stat-value" style="color:var(--danger);">{{ "{:,.2f}".format(preview_tax) }}</div><div class="stat-label">ضريبة</div></div>
+<div class="stat-card"><div class="stat-value" style="color:var(--danger);">{{ "{:,.2f}".format(preview_insurance) }}</div><div class="stat-label">تأمينات + صحي</div></div>
+</div>
+<div style="margin-top:14px;padding:14px;background:rgba(34,197,94,.1);border-radius:10px;text-align:center;">
+<div style="font-size:12px;color:var(--text-muted);">صافي تقريبي بعد الخصومات</div>
+<div style="font-size:28px;font-weight:800;color:var(--success);">{{ "{:,.2f}".format(preview_net) }} ج.م</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="card" style="margin-top:18px;">
+<div class="card-body" style="font-size:13px;color:var(--text-muted);line-height:1.7;">
+<i class="fas fa-link" style="color:var(--accent);"></i>
+عند <strong>توليد مسير رواتب جديد</strong> تُطبَّق هذه النسب تلقائياً على كل موظف.
+</div>
+</div>
+{% endblock %}
