@@ -17,6 +17,11 @@
                 {% if u.role == 'developer' %}<span class="badge badge-purple">مطوّر النظام</span>
                 {% elif u.role == 'admin' %}<span class="badge badge-danger">مدير النظام</span>
                 {% elif u.role == 'manager' %}<span class="badge badge-warning">مشرف</span>
+                {% elif u.role == 'hr_manager' %}<span class="badge badge-purple">مدير HR</span>
+                {% elif u.role == 'hr_officer' %}<span class="badge badge-info">موظف HR</span>
+                {% elif u.role == 'payroll_officer' %}<span class="badge badge-info">مسؤول رواتب</span>
+                {% elif u.role == 'department_manager' %}<span class="badge badge-warning">مدير قسم</span>
+                {% elif u.role == 'employee' %}<span class="badge badge-secondary">موظف</span>
                 {% else %}<span class="badge badge-info">مستخدم</span>{% endif %}
             </td>
             <td>{{ u.branch.name if u.branch else '—' }}</td>
@@ -50,6 +55,11 @@
                 <label class="form-label">الصلاحية *</label>
                 <select name="role" class="form-control" required id="addUserRole">
                     <option value="user">مستخدم عادي</option>
+                    <option value="employee">موظف (بوابة ذاتية)</option>
+                    <option value="department_manager">مدير قسم</option>
+                    <option value="hr_officer">موظف موارد بشرية</option>
+                    <option value="payroll_officer">مسؤول رواتب</option>
+                    <option value="hr_manager">مدير موارد بشرية</option>
                     <option value="manager">مشرف</option>
                     <option value="admin">مدير النظام</option>
                     {% if current_user.role == 'developer' %}

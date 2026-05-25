@@ -25,6 +25,11 @@
                 <label class="form-label">الدور *</label>
                 <select name="role" class="form-control" required>
                     <option value="user" {{ 'selected' if u.role=='user' }}>مستخدم عادي</option>
+                    <option value="employee" {{ 'selected' if u.role=='employee' }}>موظف (بوابة ذاتية)</option>
+                    <option value="department_manager" {{ 'selected' if u.role=='department_manager' }}>مدير قسم</option>
+                    <option value="hr_officer" {{ 'selected' if u.role=='hr_officer' }}>موظف موارد بشرية</option>
+                    <option value="payroll_officer" {{ 'selected' if u.role=='payroll_officer' }}>مسؤول رواتب</option>
+                    <option value="hr_manager" {{ 'selected' if u.role=='hr_manager' }}>مدير موارد بشرية</option>
                     <option value="manager" {{ 'selected' if u.role=='manager' }}>مشرف</option>
                     <option value="admin" {{ 'selected' if u.role=='admin' }}>مدير النظام</option>
                     {% if current_user.role == 'developer' %}

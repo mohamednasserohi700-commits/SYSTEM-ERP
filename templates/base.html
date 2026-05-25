@@ -14,7 +14,7 @@
             --accent-soft:rgba(245,158,11,.10);--success:#10b981;--danger:#ef4444;
             --warning:#f59e0b;--info:#3b82f6;--purple:#8b5cf6;
             --text:#e2e8f0;--text-muted:#64748b;--border:rgba(255,255,255,.06);
-            --card:rgba(26,32,53,.98);--sidebar-w:268px;--radius:12px;
+            --card:rgba(26,32,53,.98);--sidebar-w:290px;--radius:12px;
             --shadow:0 8px 32px rgba(0,0,0,.5);--glow:0 0 24px rgba(245,158,11,.25);
             --topbar-h:62px;
             --layout-max: {{ layout_max_width | default('1400px') }};
@@ -67,7 +67,8 @@
         [data-theme="light"] body::before{background:radial-gradient(ellipse 80% 50% at 5% 0%,rgba(202,138,4,.07) 0%,transparent 55%),
             radial-gradient(ellipse 50% 80% at 95% 100%,rgba(29,78,216,.06) 0%,transparent 55%)}
         [data-theme="light"] .topbar{background:#fff;border-bottom-color:#e2e8f0;box-shadow:0 1px 0 rgba(15,23,42,.04)}
-        [data-theme="light"] .sidebar{background:#fff;border-left-color:#e2e8f0;box-shadow:-6px 0 32px rgba(15,23,42,.04)}
+        [data-theme="light"] .sidebar{background:var(--secondary);border-left-color:var(--border);box-shadow:-6px 0 32px rgba(15,23,42,.06)}
+        [data-theme="light"] .nav-link.active{color:#fff}
         [data-theme="light"] .sidebar-nav{scrollbar-color:rgba(15,23,42,.15) transparent}
         [data-theme="light"] .form-control{background:#fff;border-color:#cbd5e1;color:#0f172a}
         [data-theme="light"] .form-control:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(202,138,4,.2)}
@@ -138,59 +139,163 @@
             100%{transform:translate(-2%, -1%) scale(1)}
         }
 
-        /* SIDEBAR — التمرير داخل القائمة فقط حتى لا يتداخل بطاقة المستخدم مع الروابط */
-        .sidebar{width:var(--sidebar-w);background:var(--secondary);height:100vh;position:fixed;right:0;top:0;
-            display:flex;flex-direction:column;border-left:1px solid var(--border);z-index:1000;
-            overflow:hidden;min-height:0}
+        /* SIDEBAR — يتبع ثيم النظام (dark / light / erp2026 / neon2026) */
+        .sidebar{
+            width:var(--sidebar-w);
+            height:100vh;
+            position:fixed;
+            right:0;
+            top:0;
+            z-index:1000;
+            display:flex;
+            flex-direction:column;
+            overflow:hidden;
+            min-height:0;
+            background:var(--secondary);
+            border-left:1px solid var(--border);
+            border-radius:24px 0 0 24px;
+            box-shadow:var(--shadow);
+        }
         [data-theme="erp2026"] .sidebar{
-            background: linear-gradient(180deg, rgba(15,42,69,.96) 0%, rgba(11,31,51,.96) 100%);
-            backdrop-filter: blur(18px);
-            -webkit-backdrop-filter: blur(18px);
-            box-shadow: -14px 0 48px rgba(0,0,0,.25);
+            backdrop-filter:blur(18px);
+            -webkit-backdrop-filter:blur(18px);
         }
         [data-theme="neon2026"] .sidebar{
-            background: linear-gradient(180deg, rgba(26,26,46,.78) 0%, rgba(15,15,30,.70) 100%);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            box-shadow: -18px 0 54px rgba(0,0,0,.32);
+            backdrop-filter:blur(20px);
+            -webkit-backdrop-filter:blur(20px);
         }
-        .sidebar-nav{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.08) transparent}
-        .sidebar-logo{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0}
-        .logo-icon{width:68px;height:68px;background:linear-gradient(135deg,var(--accent),#e07b00);border-radius:16px;
-            display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.10);
-            box-shadow:var(--glow);flex-shrink:0;font-family:'Tajawal',sans-serif;overflow:hidden}
+        .sidebar-nav{
+            flex:1;
+            min-height:0;
+            overflow-y:auto;
+            overflow-x:hidden;
+            padding:6px 12px 16px;
+            scrollbar-width:thin;
+            scrollbar-color:rgba(255,255,255,.12) transparent;
+        }
+        .sidebar-nav::-webkit-scrollbar{width:5px}
+        .sidebar-nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:8px}
+        .sidebar-logo{
+            padding:22px 20px 18px;
+            border-bottom:1px solid var(--border);
+            display:flex;
+            align-items:center;
+            gap:14px;
+            flex-shrink:0;
+            background:var(--accent-soft);
+        }
         .logo-icon{
-            background: transparent;
-            border: none;
-            box-shadow: none;
-            overflow: visible;
+            width:52px;height:52px;
+            background:transparent;
+            border:none;
+            box-shadow:none;
+            flex-shrink:0;
+            overflow:visible;
         }
         .logo-icon img{
-            width:100%;
-            height:100%;
+            width:100%;height:100%;
             object-fit:contain;
-            border-radius:0;
             display:block;
-            filter: drop-shadow(0 6px 18px rgba(0,0,0,.35));
+            filter:drop-shadow(0 4px 12px rgba(37,99,235,.25));
         }
-        .logo-text .name{font-size:16px;font-weight:800;color:var(--text);line-height:1.15;font-family:'Tajawal',sans-serif}
-        .logo-text .sub{font-size:10.5px;color:var(--text-muted);margin-top:3px}
-        .nav-section{padding:13px 10px 5px}
-        .nav-label{font-size:9.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1.8px;font-weight:700;
-            padding:0 8px 8px;display:flex;align-items:center;gap:6px}
-        .nav-label::after{content:'';flex:1;height:1px;background:var(--border)}
-        .nav-link{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--text-muted);
-            text-decoration:none;font-size:13px;font-weight:500;transition:all .18s;margin-bottom:1px;position:relative;overflow:hidden}
-        .nav-link::before{content:'';position:absolute;inset:0;border-radius:8px;background:var(--accent-soft);opacity:0;transition:opacity .18s}
-        .nav-link:hover{color:#d4b96a}.nav-link:hover::before{opacity:.6}
-        .nav-link.active{color:var(--accent);font-weight:600}.nav-link.active::before{opacity:1}
-        .nav-link.active::after{content:'';position:absolute;left:0;top:20%;height:60%;width:3px;background:var(--accent);border-radius:0 3px 3px 0}
-        .nav-link i{width:16px;text-align:center;font-size:13px;flex-shrink:0;z-index:1}
-        .nav-link span.label{z-index:1;flex:1}
-        .nav-badge{background:var(--danger);color:white;font-size:9.5px;padding:2px 6px;border-radius:20px;font-weight:800;
-            z-index:1;flex-shrink:0;min-width:18px;text-align:center}
-        .nav-badge.warn{background:var(--warning);color:#0f1422}
-        .sidebar-footer{margin-top:auto;padding:13px 10px;border-top:1px solid var(--border);flex-shrink:0}
+        .logo-text .name{
+            font-size:15px;
+            font-weight:800;
+            color:var(--text);
+            line-height:1.35;
+            font-family:'Tajawal',sans-serif;
+            letter-spacing:-.2px;
+        }
+        .logo-text .sub{
+            font-size:11px;
+            color:var(--text-muted);
+            margin-top:5px;
+            line-height:1.4;
+            font-weight:500;
+        }
+        .nav-section{padding:14px 4px 6px}
+        .nav-label{
+            font-size:10.5px;
+            color:var(--text-muted);
+            letter-spacing:.6px;
+            font-weight:700;
+            padding:0 12px 10px;
+            display:flex;
+            align-items:center;
+            gap:8px;
+            text-transform:none;
+        }
+        .nav-label::after{
+            content:'';
+            flex:1;
+            height:1px;
+            background:var(--border);
+        }
+        .nav-link{
+            display:flex;
+            align-items:center;
+            gap:12px;
+            min-height:52px;
+            padding:0 14px;
+            margin-bottom:4px;
+            border-radius:14px;
+            color:var(--text-muted);
+            text-decoration:none;
+            font-size:15px;
+            font-weight:500;
+            transition:background .3s ease,color .3s ease,transform .3s ease;
+            position:relative;
+        }
+        .nav-link::before{display:none}
+        .nav-link:hover{
+            background:var(--accent-soft);
+            color:var(--text);
+        }
+        .nav-link:hover i{
+            transform:scale(1.05);
+            color:var(--accent);
+        }
+        .nav-link.active{
+            background:linear-gradient(90deg,var(--accent) 0%,var(--info) 100%);
+            color:#fff;
+            font-weight:600;
+            box-shadow:var(--glow);
+        }
+        .nav-link.active i{color:#fff}
+        .nav-link.active::after{
+            content:'';
+            position:absolute;
+            right:0;
+            top:18%;
+            height:64%;
+            width:4px;
+            background:#fff;
+            border-radius:4px 0 0 4px;
+            opacity:.9;
+        }
+        .nav-link i{
+            width:20px;
+            text-align:center;
+            font-size:18px;
+            flex-shrink:0;
+            opacity:.88;
+            transition:transform .3s ease,color .3s ease;
+        }
+        .nav-link span.label{flex:1;line-height:1.3}
+        .nav-badge{
+            background:#ef4444;
+            color:#fff;
+            font-size:10px;
+            padding:3px 8px;
+            border-radius:20px;
+            font-weight:700;
+            flex-shrink:0;
+            min-width:20px;
+            text-align:center;
+            line-height:1.2;
+        }
+        .nav-badge.warn{background:#f59e0b;color:#0f1422}
+        .nav-about-bottom{border-top:1px solid var(--border)!important;margin-top:8px;padding-top:10px!important}
         .user-card{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;
             background:rgba(255,255,255,.03);border:1px solid var(--border)}
         .user-avatar{width:34px;height:34px;background:linear-gradient(135deg,var(--accent),#c97000);border-radius:50%;
@@ -205,7 +310,7 @@
 
         /* MAIN */
         .main-content{margin-right:var(--sidebar-w);flex:1;min-width:0;display:flex;flex-direction:column}
-        .topbar{height:var(--topbar-h);background:rgba(15,20,34,.96);backdrop-filter:blur(20px);
+        .topbar{height:var(--topbar-h);background:var(--card);backdrop-filter:blur(20px);
             border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;
             justify-content:space-between;position:sticky;top:0;z-index:100;flex-shrink:0}
         [data-theme="erp2026"] .topbar{
@@ -327,9 +432,6 @@
             background: rgba(255,255,255,.02);
         }
 
-        /* Neon accents */
-        [data-theme="neon2026"] .nav-link.active{color:var(--accent)}
-        [data-theme="neon2026"] .nav-link.active::after{background:var(--accent)}
         [data-theme="neon2026"] .btn-primary{
             background: linear-gradient(90deg, rgba(0,102,255,1), rgba(124,58,237,1));
             color:#fff;
@@ -523,14 +625,14 @@
 </head>
 <body>
 
-<aside class="sidebar" id="sidebar">
+<aside class="sidebar sidebar-enterprise" id="sidebar">
     <div class="sidebar-logo">
         <div class="logo-icon">
             <img src="{{ url_for('static', filename='img/logo-makers-erp-3d.png') }}" alt="Makers ERP">
         </div>
         <div class="logo-text">
-            <div class="name" style="font-size:16px;line-height:1.25;">{{ app_brand_title }}</div>
-            <div class="sub">{{ app_subtitle_brand }}</div>
+            <div class="name">{{ app_brand_title | default('النظام المحاسبي الذكي ERP') }}</div>
+            <div class="sub">نظام إدارة الأعمال المتكامل</div>
         </div>
     </div>
 
@@ -545,7 +647,7 @@
         </div>
         {% if can('sales') or can('purchases') or can('returns') %}
         <div class="nav-section">
-            <div class="nav-label">العمليات</div>
+            <div class="nav-label">المبيعات والعمليات</div>
             {% if can('sales') %}
             <a href="{{ url_for('sales') }}" class="nav-link {% if 'sale' in (request.endpoint or '') and 'return' not in (request.endpoint or '') and 'report' not in (request.endpoint or '') %}active{% endif %}">
                 <i class="fas fa-cash-register"></i><span class="label">المبيعات</span>
@@ -593,7 +695,7 @@
             {% endif %}
         </div>
         {% endif %}
-        {% if can('customers') or can('suppliers') or can('employees') %}
+        {% if can('customers') or can('suppliers') %}
         <div class="nav-section">
             <div class="nav-label">الأطراف</div>
             {% if can('customers') %}
@@ -606,9 +708,74 @@
                 <i class="fas fa-truck"></i><span class="label">الموردون</span>
             </a>
             {% endif %}
-            {% if can('employees') %}
-            <a href="{{ url_for('employees') }}" class="nav-link {% if 'employee' in (request.endpoint or '') %}active{% endif %}">
+        </div>
+        {% endif %}
+        {% if can('hrm') or can('hrm_dashboard') or can('hrm_employees') %}
+        <div class="nav-section">
+            <div class="nav-label">👥 الموارد البشرية</div>
+            {% if can('hrm_dashboard') or can('hrm') %}
+            <a href="{{ url_for('hrm_dashboard') }}" class="nav-link {% if request.endpoint and request.endpoint.startswith('hrm') and request.endpoint=='hrm_dashboard' %}active{% elif request.endpoint and 'hrm' in request.endpoint and request.endpoint=='hrm_dashboard' %}active{% endif %}">
+                <i class="fas fa-chart-pie"></i><span class="label">لوحة تحكم HR</span>
+            </a>
+            {% endif %}
+            {% if can('hrm_employees') or can('hrm') %}
+            <a href="{{ url_for('hrm_employees') }}" class="nav-link {% if request.endpoint in ['hrm_employees','hrm_employee_form'] %}active{% endif %}">
                 <i class="fas fa-id-badge"></i><span class="label">الموظفون</span>
+            </a>
+            <a href="{{ url_for('hrm_departments') }}" class="nav-link {% if request.endpoint=='hrm_departments' %}active{% endif %}">
+                <i class="fas fa-sitemap"></i><span class="label">الأقسام</span>
+            </a>
+            <a href="{{ url_for('hrm_designations') }}" class="nav-link {% if request.endpoint=='hrm_designations' %}active{% endif %}">
+                <i class="fas fa-briefcase"></i><span class="label">الوظائف</span>
+            </a>
+            {% endif %}
+            {% if can('hrm_attendance') or can('hrm') %}
+            <a href="{{ url_for('hrm_attendance') }}" class="nav-link {% if request.endpoint in ['hrm_attendance','hrm_attendance_qr'] %}active{% endif %}">
+                <i class="fas fa-clock"></i><span class="label">الحضور والانصراف</span>
+            </a>
+            {% endif %}
+            {% if can('hrm_leaves') or can('hrm') %}
+            <a href="{{ url_for('hrm_leaves') }}" class="nav-link {% if request.endpoint=='hrm_leaves' %}active{% endif %}">
+                <i class="fas fa-calendar-alt"></i><span class="label">الإجازات</span>
+                <span class="nav-badge warn" id="sidebarHrmLeaveBadge" style="display:none">0</span>
+            </a>
+            {% endif %}
+            {% if can('hrm_payroll') or can('hrm') %}
+            <a href="{{ url_for('hrm_payroll_list') }}" class="nav-link {% if request.endpoint in ['hrm_payroll_list','hrm_payroll_detail','hrm_payslips'] %}active{% endif %}">
+                <i class="fas fa-money-check-alt"></i><span class="label">الرواتب</span>
+            </a>
+            <a href="{{ url_for('hrm_loans') }}" class="nav-link {% if request.endpoint=='hrm_loans' %}active{% endif %}">
+                <i class="fas fa-hand-holding-usd"></i><span class="label">السلف</span>
+            </a>
+            <a href="{{ url_for('hrm_deductions') }}" class="nav-link {% if request.endpoint=='hrm_deductions' %}active{% endif %}">
+                <i class="fas fa-minus-circle"></i><span class="label">الخصومات</span>
+            </a>
+            <a href="{{ url_for('hrm_tax_insurance') }}" class="nav-link {% if request.endpoint=='hrm_tax_insurance' %}active{% endif %}">
+                <i class="fas fa-percentage"></i><span class="label">خصومات الضرائب والتأمينات</span>
+            </a>
+            <a href="{{ url_for('hrm_bonuses') }}" class="nav-link {% if request.endpoint=='hrm_bonuses' %}active{% endif %}">
+                <i class="fas fa-gift"></i><span class="label">المكافآت</span>
+            </a>
+            {% endif %}
+            {% if can('hrm_employees') or can('hrm') %}
+            <a href="{{ url_for('hrm_performance') }}" class="nav-link {% if request.endpoint=='hrm_performance' %}active{% endif %}">
+                <i class="fas fa-star"></i><span class="label">تقييم الأداء</span>
+            </a>
+            <a href="{{ url_for('hrm_contracts') }}" class="nav-link {% if request.endpoint=='hrm_contracts' %}active{% endif %}">
+                <i class="fas fa-file-contract"></i><span class="label">العقود</span>
+            </a>
+            <a href="{{ url_for('hrm_documents') }}" class="nav-link {% if request.endpoint=='hrm_documents' %}active{% endif %}">
+                <i class="fas fa-folder-open"></i><span class="label">الوثائق</span>
+            </a>
+            {% endif %}
+            {% if can('hrm_payroll') or can('hrm') %}
+            <a href="{{ url_for('hrm_payslips') }}" class="nav-link {% if request.endpoint=='hrm_payslips' %}active{% endif %}">
+                <i class="fas fa-file-invoice"></i><span class="label">كشوف المرتبات</span>
+            </a>
+            {% endif %}
+            {% if can('hrm_reports') or can('hrm') %}
+            <a href="{{ url_for('hrm_reports') }}" class="nav-link {% if request.endpoint and request.endpoint.startswith('hrm_report') %}active{% endif %}">
+                <i class="fas fa-chart-bar"></i><span class="label">تقارير HR</span>
             </a>
             {% endif %}
         </div>
@@ -635,7 +802,7 @@
         {% endif %}
         {% if can('reports') %}
         <div class="nav-section">
-            <div class="nav-label">التقارير</div>
+            <div class="nav-label">التقارير والتحليلات</div>
             <a href="{{ url_for('report_dashboard') }}" class="nav-link {% if request.endpoint=='report_dashboard' %}active{% endif %}">
                 <i class="fas fa-chart-bar"></i><span class="label">التقارير التحليلية</span>
             </a>
@@ -668,7 +835,7 @@
         {% endif %}
         {% if can('settings') or can('settings_branding') or can('settings_database') or can('users') or can('backup') %}
         <div class="nav-section">
-            <div class="nav-label">الإعدادات</div>
+            <div class="nav-label">الإدارة والإعدادات</div>
             {% if can('settings_branding') %}
             <a href="{{ url_for('app_settings') }}" class="nav-link {% if request.endpoint=='app_settings' %}active{% endif %}">
                 <i class="fas fa-palette"></i><span class="label">إعدادات النظام</span>
@@ -873,18 +1040,36 @@ async function loadNotif() {
         const r = await fetch('/api/notifications');
         if(!r.ok) return;
         const d = await r.json();
-        const total = d.pending_transfers + d.low_stock;
+        const pendingLeaves = d.pending_leaves || 0;
+        const hrmItems = d.hrm_items || [];
+        const hrmAlerts = pendingLeaves + (d.hrm_items ? d.hrm_items.filter(x => x.kind === 'stored').length : 0);
+        const total = (d.total != null ? d.total : (d.pending_transfers + d.low_stock + hrmAlerts));
         const el = document.getElementById('notifCount');
         el.textContent = total > 99 ? '99+' : total;
         el.classList.toggle('show', total > 0);
         const pb = document.getElementById('sidebarPendingBadge');
         const lb = document.getElementById('sidebarLowStockBadge');
+        const hb = document.getElementById('sidebarHrmLeaveBadge');
         if(pb){ pb.textContent = d.pending_transfers; pb.style.display = d.pending_transfers > 0 ? '' : 'none'; }
         if(lb){ lb.textContent = d.low_stock; lb.style.display = d.low_stock > 0 ? '' : 'none'; }
+        if(hb){ hb.textContent = pendingLeaves; hb.style.display = pendingLeaves > 0 ? '' : 'none'; }
         const items = [];
         if(d.pending_transfers > 0) items.push(`<a href="/transfers?status=pending" class="notif-item" onclick="closeNotif()"><div class="notif-icon warn"><i class="fas fa-exchange-alt"></i></div><div class="notif-text"><b>تحويلات معلقة</b><span>${d.pending_transfers} طلب ينتظر الموافقة</span></div></a>`);
         if(d.low_stock > 0) items.push(`<a href="/reports/low-stock" class="notif-item" onclick="closeNotif()"><div class="notif-icon danger"><i class="fas fa-exclamation-triangle"></i></div><div class="notif-text"><b>نقص مخزون</b><span>${d.low_stock} صنف وصل للحد الأدنى</span></div></a>`);
         if(d.overdue_customers > 0) items.push(`<a href="/reports/customers" class="notif-item" onclick="closeNotif()"><div class="notif-icon info"><i class="fas fa-users"></i></div><div class="notif-text"><b>أرصدة عملاء</b><span>${d.overdue_customers} عميل لديه رصيد مستحق</span></div></a>`);
+        const leaveNotifs = (hrmItems || []).filter(function(n){ return n.kind === 'leave'; });
+        if(leaveNotifs.length > 0) {
+            leaveNotifs.forEach(function(n) {
+                items.push(`<a href="${n.link || '/hrm/leaves?status=pending'}" class="notif-item" onclick="closeNotif()"><div class="notif-icon warn"><i class="fas fa-${n.icon || 'calendar-alt'}"></i></div><div class="notif-text"><b>${n.title}</b><span>${n.message}</span></div></a>`);
+            });
+        } else if(pendingLeaves > 0) {
+            items.push(`<a href="/hrm/leaves?status=pending" class="notif-item" onclick="closeNotif()"><div class="notif-icon warn"><i class="fas fa-calendar-alt"></i></div><div class="notif-text"><b>طلبات إجازة معلقة</b><span>${pendingLeaves} طلب يحتاج اعتماد</span></div></a>`);
+        }
+        (hrmItems || []).filter(function(n){ return n.kind !== 'leave'; }).forEach(function(n) {
+            const tone = n.tone === 'warn' ? 'warn' : (n.tone === 'danger' ? 'danger' : 'info');
+            const icon = n.icon || 'bell';
+            items.push(`<a href="${n.link || '/hrm/leaves'}" class="notif-item" onclick="closeNotif()"><div class="notif-icon ${tone}"><i class="fas fa-${icon}"></i></div><div class="notif-text"><b>${n.title || 'إشعار'}</b><span>${n.message || ''}</span></div></a>`);
+        });
         document.getElementById('notifList').innerHTML = items.length ? items.join('') : `<div class="notif-empty"><i class="fas fa-check-circle" style="font-size:26px;display:block;margin-bottom:10px;color:var(--success);opacity:.7;"></i>لا توجد إشعارات</div>`;
     } catch(e) {}
 }
