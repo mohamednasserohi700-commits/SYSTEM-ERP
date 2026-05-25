@@ -1,8 +1,0 @@
-{% extends 'base.html' %}{% from 'hrm/_macros.html' import hrm_nav %}
-{% block page_title %}تقرير الحضور{% endblock %}
-{% block topbar_actions %}<a href="{{ url_for('hrm_report_export', report_type='attendance') }}" class="btn btn-outline"><i class="fas fa-file-excel"></i> Excel</a>
-<button onclick="window.print()" class="btn btn-outline"><i class="fas fa-file-pdf"></i> PDF</button>{% endblock %}
-{% block content %}{{ hrm_nav('reports') }}
-<div class="card"><table><thead><tr><th>موظف</th><th>تاريخ</th><th>دخول</th><th>خروج</th><th>ساعات</th><th>حالة</th></tr></thead>
-<tbody>{% for r in records %}<tr><td>{{ r.employee.name if r.employee else r.employee_id }}</td><td>{{ r.att_date }}</td><td>{{ r.check_in }}</td><td>{{ r.check_out }}</td><td>{{ r.working_hours }}</td><td>{{ r.status }}</td></tr>{% endfor %}</tbody></table></div>
-{% endblock %}
