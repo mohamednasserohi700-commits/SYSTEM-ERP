@@ -218,13 +218,24 @@ class Employee(db.Model):
     name = db.Column(db.String(200), nullable=False)
     phone = db.Column(db.String(20))
     email = db.Column(db.String(100))
+    national_id = db.Column(db.String(30))
+    address = db.Column(db.Text)
+    photo = db.Column(db.String(300))
     position = db.Column(db.String(100))
-    department = db.Column(db.String(100))
+    department = db.Column(db.String(100))  # نص قديم — يُفضّل department_id
+    department_id = db.Column(db.Integer, db.ForeignKey('hrm_department.id'))
+    designation_id = db.Column(db.Integer, db.ForeignKey('hrm_designation.id'))
+    manager_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'))
     salary = db.Column(db.Float, default=0)
+    allowances = db.Column(db.Float, default=0)
     hire_date = db.Column(db.Date)
+    employment_status = db.Column(db.String(30), default='active')
+    contract_type = db.Column(db.String(40), default='permanent')
     is_active = db.Column(db.Boolean, default=True)
     branch = db.relationship('Branch')
+    manager = db.relationship('Employee', remote_side=[id], foreign_keys=[manager_id])
 
 class Sale(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -490,6 +501,15 @@ PERMISSION_KEYS = [
     ('backup', 'النسخ الاحتياطي'),
     ('warehouse_purge', 'حذف نهائي للمخزن (خطير)'),
     ('stock_line_delete', 'حذف سطر صنف من المخزن/الجرد (خطير)'),
+    ('hrm', 'الموارد البشرية — وصول عام'),
+    ('hrm_dashboard', 'لوحة تحكم الموارد البشرية'),
+    ('hrm_employees', 'إدارة موظفي HR'),
+    ('hrm_departments', 'أقسام ووظائف HR'),
+    ('hrm_attendance', 'الحضور والانصراف'),
+    ('hrm_leaves', 'الإجازات'),
+    ('hrm_payroll', 'الرواتب والسلف'),
+    ('hrm_reports', 'تقارير HR'),
+    ('hrm_approve', 'اعتماد إجازات ورواتب HR'),
 ]
 
 # تظهر في شاشة الصلاحيات للمطوّر فقط — يمنحها للمستخدمين يدوياً
@@ -506,6 +526,10 @@ DEFAULT_SETTINGS = {
 
 # إعدادات إضافية (قابلة للتخزين في AppSetting وللتخصيص حسب الفرع)
 EXTRA_APP_SETTINGS_DEFAULTS = {
+    'hrm_tax_percent': '0',
+    'hrm_insurance_employee_percent': '11',
+    'hrm_insurance_employer_percent': '18.75',
+    'hrm_health_insurance_percent': '0',
     'sale_fixed_tax_percent': '0',
     'sale_fixed_tax_enabled': '0',
     'print_mode': 'normal',
@@ -548,6 +572,12 @@ def user_can(user, perm: str) -> bool:
     if getattr(user, 'role', None) == 'developer':
         return True
     custom = _perm_list_from_user(user)
+    if perm == 'hrm':
+        if custom is not None and any(str(p).startswith('hrm') for p in custom):
+            return True
+        role = getattr(user, 'role', None)
+        if role in ('hr_manager', 'hr_officer', 'payroll_officer', 'department_manager'):
+            return True
     if perm in DEVELOPER_ONLY_PERMS:
         if custom is None:
             return False
@@ -565,6 +595,24 @@ def user_can(user, perm: str) -> bool:
             'dashboard', 'sales', 'purchases', 'returns', 'inventory', 'transfers',
             'customers', 'suppliers', 'expenses', 'products', 'categories', 'reports',
         }
+    if user.role == 'hr_manager':
+        hrm_all = {k for k, _ in PERMISSION_KEYS if k.startswith('hrm')}
+        return perm in hrm_all
+    if user.role == 'hr_officer':
+        return perm in {
+            'dashboard', 'hrm', 'hrm_dashboard', 'hrm_employees', 'hrm_departments',
+            'hrm_attendance', 'hrm_leaves', 'hrm_reports',
+        }
+    if user.role == 'payroll_officer':
+        return perm in {
+            'dashboard', 'hrm', 'hrm_dashboard', 'hrm_employees', 'hrm_payroll', 'hrm_reports',
+        }
+    if user.role == 'department_manager':
+        return perm in {
+            'dashboard', 'hrm', 'hrm_dashboard', 'hrm_attendance', 'hrm_leaves', 'hrm_approve',
+        }
+    if user.role == 'employee':
+        return perm in {'dashboard', 'hrm', 'hrm_leaves'}
     return False
 
 
@@ -606,6 +654,23 @@ def default_role_permission_set(role: str) -> set:
             'dashboard', 'sales', 'purchases', 'returns', 'inventory', 'transfers',
             'customers', 'suppliers', 'expenses', 'products', 'categories', 'reports',
         }
+    if role == 'hr_manager':
+        return {k for k in keys_all if k.startswith('hrm')} | {'dashboard'}
+    if role == 'hr_officer':
+        return {
+            'dashboard', 'hrm', 'hrm_dashboard', 'hrm_employees', 'hrm_departments',
+            'hrm_attendance', 'hrm_leaves', 'hrm_reports',
+        }
+    if role == 'payroll_officer':
+        return {
+            'dashboard', 'hrm', 'hrm_dashboard', 'hrm_employees', 'hrm_payroll', 'hrm_reports',
+        }
+    if role == 'department_manager':
+        return {
+            'dashboard', 'hrm', 'hrm_dashboard', 'hrm_attendance', 'hrm_leaves', 'hrm_approve',
+        }
+    if role == 'employee':
+        return {'dashboard', 'hrm', 'hrm_leaves'}
     return set()
 
 
@@ -656,6 +721,7 @@ _SAFE_HOME_FALLBACK_ROUTES = [
     ('products', 'products'),
     ('categories', 'categories'),
     ('reports', 'report_dashboard'),
+    ('hrm', 'hrm_dashboard'),
     ('settings', 'branches'),
     ('settings_branding', 'app_settings'),
     ('settings_database', 'database_admin'),
@@ -701,6 +767,24 @@ def path_required_permission(path: str):
         ('/customers', 'customers'),
         ('/suppliers', 'suppliers'),
         ('/employees', 'employees'),
+        ('/hrm/employees', 'hrm_employees'),
+        ('/hrm/departments', 'hrm_departments'),
+        ('/hrm/designations', 'hrm_departments'),
+        ('/hrm/attendance', 'hrm_attendance'),
+        ('/hrm/leaves', 'hrm_leaves'),
+        ('/hrm/payroll', 'hrm_payroll'),
+        ('/hrm/loans', 'hrm_payroll'),
+        ('/hrm/deductions', 'hrm_payroll'),
+        ('/hrm/tax-insurance', 'hrm_payroll'),
+        ('/hrm/bonuses', 'hrm_payroll'),
+        ('/hrm/contracts', 'hrm_employees'),
+        ('/hrm/documents', 'hrm_employees'),
+        ('/hrm/performance', 'hrm_employees'),
+        ('/hrm/payslips', 'hrm_payroll'),
+        ('/hrm/reports', 'hrm_reports'),
+        ('/api/hrm', 'hrm'),
+        ('/hrm/dashboard', 'hrm_dashboard'),
+        ('/hrm', 'hrm'),
         ('/expenses', 'expenses'),
         ('/categories', 'categories'),
         ('/products', 'products'),
@@ -965,6 +1049,36 @@ def ensure_schema():
             db.create_all()
         except Exception:
             pass
+        tables = insp.get_table_names()
+        if 'employee' in tables:
+            ecols = {c['name'] for c in insp.get_columns('employee')}
+            emp_cols = [
+                ('national_id', 'VARCHAR(30)'),
+                ('address', 'TEXT'),
+                ('photo', 'VARCHAR(300)'),
+                ('department_id', 'INTEGER'),
+                ('designation_id', 'INTEGER'),
+                ('manager_id', 'INTEGER'),
+                ('user_id', 'INTEGER'),
+                ('allowances', 'FLOAT DEFAULT 0'),
+                ('employment_status', "VARCHAR(30) DEFAULT 'active'"),
+                ('contract_type', "VARCHAR(40) DEFAULT 'permanent'"),
+            ]
+            for col, ctype in emp_cols:
+                if col not in ecols:
+                    with db.engine.begin() as conn:
+                        conn.execute(text(f'ALTER TABLE employee ADD COLUMN {col} {ctype}'))
+        if 'hrm_payroll_detail' in tables:
+            pcols = {c['name'] for c in insp.get_columns('hrm_payroll_detail')}
+            for col, ctype in [
+                ('is_paid', 'BOOLEAN DEFAULT 0'),
+                ('paid_at', 'DATETIME'),
+                ('payment_method', 'VARCHAR(30)'),
+                ('expense_id', 'INTEGER'),
+            ]:
+                if col not in pcols:
+                    with db.engine.begin() as conn:
+                        conn.execute(text(f'ALTER TABLE hrm_payroll_detail ADD COLUMN {col} {ctype}'))
     except Exception:
         pass
 
@@ -2430,8 +2544,10 @@ def delete_expense(id):
 @app.route('/employees')
 @login_required
 def employees():
-    employees = Employee.query.filter_by(is_active=True).all()
-    return render_template('employees.html', employees=employees)
+    if user_can(current_user, 'hrm') or user_can(current_user, 'hrm_employees'):
+        return redirect(url_for('hrm_employees'))
+    employees_list = Employee.query.filter_by(is_active=True).all()
+    return render_template('employees.html', employees=employees_list)
 
 
 @app.route('/employees/<int:id>/pay-salary', methods=['GET', 'POST'])
@@ -3603,8 +3719,24 @@ def api_notifications():
         Stock.quantity <= Product.min_stock, Product.min_stock > 0, Product.is_active == True
     ).count()
     overdue_customers = Customer.query.filter(Customer.balance > 0).count()
-    return jsonify({'pending_transfers': pending_transfers, 'low_stock': low_stock,
-        'overdue_customers': overdue_customers, 'total': pending_transfers + low_stock})
+    hrm_feed = {'pending_leaves': 0, 'items': [], 'stored': []}
+    try:
+        if _hrm_models:
+            import hrm_services as hrm_svc
+            hrm_feed = hrm_svc.collect_hrm_notification_feed(db, _hrm_models, current_user)
+    except Exception:
+        pass
+    hrm_count = hrm_feed.get('pending_leaves', 0) + len(hrm_feed.get('stored', []))
+    hrm_items = hrm_feed.get('items', []) + hrm_feed.get('stored', [])
+    return jsonify({
+        'pending_transfers': pending_transfers,
+        'low_stock': low_stock,
+        'overdue_customers': overdue_customers,
+        'pending_leaves': hrm_feed.get('pending_leaves', 0),
+        'hrm_alerts': hrm_count,
+        'hrm_items': hrm_items,
+        'total': pending_transfers + low_stock + hrm_count,
+    })
 
 @app.route('/api/dashboard-kpi')
 @login_required
@@ -4013,6 +4145,40 @@ def report_expenses():
     return render_template('report_expenses.html',
         expenses=expenses, by_category=by_category,
         total=total, date_from=date_from, date_to=date_to)
+
+
+# ===== HRM MODULE =====
+_hrm_models = None
+_hrm_ctx = None
+
+def _init_hrm_module():
+    global _hrm_models, _hrm_ctx
+    from hrm_models import init_hrm_models
+    from hrm_routes import register_hrm
+    _hrm_models = init_hrm_models(db)
+    _hrm_ctx = register_hrm(app, db, _hrm_models, {
+        'user_can': user_can,
+        'record_delete_required': record_delete_required,
+        'allocate_entity_code': allocate_entity_code,
+        'get_next_number': get_next_number,
+        'safe_home_url_for': safe_home_url_for,
+    })
+    with app.app_context():
+        db.create_all()
+        ensure_schema()
+        import hrm_services as hrm_svc
+        hrm_svc.seed_leave_types(db, _hrm_models)
+        for k, v in [
+            ('hrm_tax_percent', '0'),
+            ('hrm_insurance_employee_percent', '11'),
+            ('hrm_insurance_employer_percent', '18.75'),
+            ('hrm_health_insurance_percent', '0'),
+        ]:
+            if not AppSetting.query.filter_by(key=k).first():
+                db.session.add(AppSetting(key=k, value=v))
+        db.session.commit()
+
+_init_hrm_module()
 
 
 if __name__ == '__main__':
