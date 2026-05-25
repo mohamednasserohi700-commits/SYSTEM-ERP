@@ -1,0 +1,18 @@
+{% extends 'base.html' %}{% from 'hrm/_macros.html' import hrm_nav %}
+{% set block_icon = 'fas fa-briefcase' %}{% block title %}الوظائف{% endblock %}{% block page_title %}الوظائف{% endblock %}
+{% block content %}{{ hrm_nav('designations') }}
+<div class="card"><table class="table-container"><table><thead><tr><th>الوظيفة</th><th>القسم</th><th></th></tr></thead>
+<tbody>{% for j in designations %}
+<tr>
+<td>{{ j.title }}</td>
+<td>{{ j.department.name if j.department else '—' }}</td>
+<td>{% if can('record_delete') %}
+<form method="POST" action="{{ url_for('hrm_designation_delete', id=j.id) }}" style="display:inline" onsubmit="return confirm('حذف الوظيفة نهائياً؟')">
+<button type="submit" class="btn btn-danger btn-xs"><i class="fas fa-trash"></i></button></form>{% endif %}
+</td>
+</tr>{% endfor %}</tbody></table></div>
+<div class="card" style="margin-top:14px;max-width:500px;"><div class="card-body">
+<form method="POST" action="{{ url_for('hrm_designation_save') }}">
+<div class="form-group"><label>الوظيفة</label><input name="title" class="form-control" required></div>
+<div class="form-group"><label>القسم</label><select name="department_id" class="form-control"><option value="">—</option>{% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></div>
+<button class="btn btn-primary btn-sm">حفظ</button></form></div></div>{% endblock %}

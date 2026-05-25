@@ -1,0 +1,13 @@
+{% extends 'base.html' %}{% from 'hrm/_macros.html' import hrm_nav %}
+{% block title %}حضور QR{% endblock %}{% block page_title %}تسجيل حضور QR{% endblock %}
+{% block content %}{{ hrm_nav('attendance') }}
+<div class="card" style="max-width:480px;margin:0 auto;text-align:center;">
+<div class="card-body" style="padding:32px;">
+<i class="fas fa-qrcode" style="font-size:64px;color:var(--accent);margin-bottom:20px;"></i>
+<form method="POST">
+<div class="form-group"><label>كود الموظف أو امسح QR</label>
+<input name="employee_code" class="form-control" style="font-size:22px;text-align:center;" autofocus required></div>
+<button class="btn btn-primary" style="width:100%;padding:14px;"><i class="fas fa-fingerprint"></i> تسجيل</button>
+</form>
+<p style="margin-top:16px;color:var(--text-muted);font-size:12px;">API البصمة: POST /api/hrm/biometric</p>
+</div></div>{% endblock %}

@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% from 'hrm/_macros.html' import hrm_nav %}
+{% block page_title %}تقرير السلف{% endblock %}
+{% block content %}{{ hrm_nav('reports') }}
+<div class="card"><table><thead><tr><th>موظف</th><th>المبلغ</th><th>متبقي</th></tr></thead>
+<tbody>{% for l in loans %}<tr><td>{{ l.employee.name if l.employee else '' }}</td><td>{{ l.amount }}</td><td>{{ l.remaining }}</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

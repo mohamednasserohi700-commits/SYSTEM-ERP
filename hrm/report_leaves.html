@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% from 'hrm/_macros.html' import hrm_nav %}
+{% block page_title %}تقرير الإجازات{% endblock %}
+{% block content %}{{ hrm_nav('reports') }}
+<div class="card"><table><thead><tr><th>موظف</th><th>نوع</th><th>من</th><th>إلى</th><th>حالة</th></tr></thead>
+<tbody>{% for l in leaves %}<tr><td>{{ l.employee.name if l.employee else '' }}</td><td>{{ l.leave_type.name if l.leave_type else '' }}</td><td>{{ l.date_from }}</td><td>{{ l.date_to }}</td><td>{{ l.status }}</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

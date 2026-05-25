@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% from 'hrm/_macros.html' import hrm_nav %}
+{% block page_title %}تقرير الرواتب{% endblock %}
+{% block content %}{{ hrm_nav('reports') }}
+<div class="card"><table><thead><tr><th>الفترة</th><th>إجمالي</th><th>صافي</th><th>حالة</th></tr></thead>
+<tbody>{% for p in payrolls %}<tr><td>{{ p.period_year }}/{{ '%02d'|format(p.period_month) }}</td><td>{{ p.total_gross }}</td><td>{{ p.total_net }}</td><td>{{ p.status }}</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

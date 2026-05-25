@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% from 'hrm/_macros.html' import hrm_nav %}
+{% set block_icon = 'fas fa-money-check-alt' %}
+{% block title %}الرواتب{% endblock %}
+{% block page_title %}صرف رواتب الموظفين{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('hrm_tax_insurance') }}" class="btn btn-outline"><i class="fas fa-percentage"></i> الضرائب والتأمينات</a>
+{% endblock %}
+{% block content %}
+{{ hrm_nav('payroll') }}
+
+<div class="card" style="margin-bottom:16px;border-color:rgba(59,130,246,.35);">
+<div class="card-body" style="padding:16px 20px;">
+<div style="display:flex;flex-wrap:wrap;gap:20px;align-items:center;justify-content:space-between;">
+<div>
+<div style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">إعدادات الخصومات الحالية</div>
+<div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px;">
+<span class="badge badge-info">ضريبة: {{ rates.tax_percent }}%</span>
+<span class="badge badge-info">تأمينات موظف: {{ rates.insurance_employee_percent }}%</span>
+<span class="badge badge-warning">تأمينات شركة: {{ rates.insurance_employer_percent }}%</span>
+<span class="badge badge-info">تأمين صحي: {{ rates.health_insurance_percent }}%</span>
+</div>
+</div>
+<form method="POST" action="{{ url_for('hrm_payroll_generate') }}" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;">
+<div class="form-group" style="margin:0;"><label class="form-label">السنة</label><input type="number" name="year" class="form-control" value="{{ today.year }}" style="width:100px;"></div>
+<div class="form-group" style="margin:0;"><label class="form-label">الشهر</label><input type="number" name="month" min="1" max="12" class="form-control" value="{{ today.month }}" style="width:80px;"></div>
+<button type="submit" class="btn btn-primary"><i class="fas fa-cogs"></i> توليد مسير شهري</button>
+</form>
+</div>
+</div></div>
+
+<div class="card"><div class="table-container"><table>
+<thead><tr><th>الفترة</th><th>الإجمالي</th><th>الصافي</th><th>المصروف</th><th>المتبقي</th><th>الحالة</th><th>التقدم</th><th></th></tr></thead>
+<tbody>
+{% for row in payroll_rows %}
+{% set p = row.payroll %}{% set sm = row.summary %}
+<tr>
+<td style="font-weight:700;">{{ p.period_year }}/{{ '%02d'|format(p.period_month) }}</td>
+<td>{{ "{:,.2f}".format(p.total_gross or 0) }}</td>
+<td style="color:var(--success);font-weight:700;">{{ "{:,.2f}".format(p.total_net or 0) }}</td>
+<td style="color:var(--accent);">{{ "{:,.2f}".format(sm.paid_amount) }}</td>
+<td style="color:var(--warning);">{{ "{:,.2f}".format(sm.pending_amount) }}</td>
+<td>
+{% if row.partial_paid %}<span class="badge badge-warning">صرف جزئي</span>
+{% elif p.status=='paid' %}<span class="badge badge-success">{{ row.status_label }}</span>
+{% elif p.status=='approved' %}<span class="badge badge-info">{{ row.status_label }}</span>
+{% else %}<span class="badge badge-secondary">{{ row.status_label }}</span>{% endif %}
+</td>
+<td style="min-width:120px;">
+<div style="background:rgba(255,255,255,.08);border-radius:6px;height:8px;overflow:hidden;">
+<div style="width:{{ (sm.paid_count * 100 / sm.total_count) if sm.total_count else 0 }}%;height:100%;background:linear-gradient(90deg,#3b82f6,#8b5cf6);"></div>
+</div>
+<small style="color:var(--text-muted);">{{ sm.paid_count }}/{{ sm.total_count }} موظف</small>
+</td>
+<td>
+<a href="{{ url_for('hrm_payroll_detail', id=p.id) }}" class="btn btn-primary btn-xs">
+<i class="fas fa-hand-holding-usd"></i> صرف / تفاصيل
+</a>
+</td>
+</tr>
+{% else %}
+<tr><td colspan="8"><div class="empty-state"><i class="fas fa-money-check-alt"></i><h3>لا توجد مسيرات رواتب</h3><p>ولّد مسيراً شهرياً للبدء</p></div></td></tr>
+{% endfor %}
+</tbody></table></div></div>
+{% endblock %}
