@@ -24,4 +24,7 @@ python-dotenv==1.2.2
 # Production WSGI server (على Linux/macOS؛ على Windows اختياري)
 gunicorn==25.3.0
 
+# QR codes — بطاقات حضور الموظفين
+qrcode==8.2
+
 # PostgreSQL: لا يُثبّت هنا — راجع requirements-postgres.txt (قد يفشل على Python 3.14 بدون عجلة جاهزة)

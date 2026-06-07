@@ -4,7 +4,7 @@ from functools import wraps
 import os
 import json
 
-from flask import render_template, request, redirect, url_for, flash, jsonify, send_file, current_app
+from flask import render_template, request, redirect, url_for, flash, jsonify, send_file, current_app, send_from_directory
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
@@ -62,6 +62,25 @@ def register_hrm(app, db, models, helpers):
         per = request.args.get('per_page', default, type=int)
         return q.paginate(page=page, per_page=min(per, 100), error_out=False)
 
+    def photo_url(photo_path):
+        if not photo_path:
+            return None
+        fn = photo_path.split('/')[-1] if '/' in photo_path else photo_path
+        return url_for('hrm_upload', filename=fn)
+
+    def enrich_employees(items):
+        """إرفاق بيانات العرض لكل موظف."""
+        enriched = []
+        for e in items:
+            info = svc.resolve_employee_display(e, M)
+            enriched.append({'emp': e, 'dept': info['dept_name'], 'position': info['position'], 'status_label': info['status_label']})
+        return enriched
+
+    @app.route('/hrm/uploads/<path:filename>')
+    @login_required
+    def hrm_upload(filename):
+        return send_from_directory(HRM_UPLOAD_DIR, filename)
+
     # ── Dashboard ─────────────────────────────────────────
     @app.route('/hrm')
     @app.route('/hrm/dashboard')
@@ -72,6 +91,7 @@ def register_hrm(app, db, models, helpers):
         dept_labels, dept_vals = svc.department_chart_data(db, M)
         pay_labels, pay_vals = svc.payroll_chart_data(db, M)
         att_labels, att_present, att_absent = svc.attendance_30_days(db, M)
+        abs_labels, abs_rates = svc.absence_rate_chart_data(db, M)
         pending_leaves = M['HrmLeaveRequest'].query.filter_by(status='pending').count()
         return render_template(
             'hrm/dashboard.html',
@@ -79,6 +99,7 @@ def register_hrm(app, db, models, helpers):
             dept_labels=dept_labels, dept_values=dept_vals,
             payroll_labels=pay_labels, payroll_values=pay_vals,
             att_labels=att_labels, att_present=att_present, att_absent=att_absent,
+            abs_labels=abs_labels, abs_rates=abs_rates,
             pending_leaves=pending_leaves,
         )
 
@@ -91,6 +112,8 @@ def register_hrm(app, db, models, helpers):
         search = (request.args.get('q') or '').strip()
         dept_id = request.args.get('department_id', type=int)
         status = request.args.get('status')
+        sort = request.args.get('sort', 'id')
+        order = request.args.get('order', 'desc')
         if search:
             q = q.filter(
                 db.or_(
@@ -98,6 +121,7 @@ def register_hrm(app, db, models, helpers):
                     Employee.code.contains(search),
                     Employee.phone.contains(search),
                     Employee.national_id.contains(search),
+                    Employee.department.contains(search),
                 )
             )
         if dept_id:
@@ -106,15 +130,33 @@ def register_hrm(app, db, models, helpers):
             q = q.filter_by(is_active=True)
         elif status == 'inactive':
             q = q.filter_by(is_active=False)
-        q = q.order_by(Employee.id.desc())
-        pagination = paginate_query(q)
+        elif status == 'on_leave':
+            today = date.today()
+            leave_ids = db.session.query(M['HrmLeaveRequest'].employee_id).filter(
+                M['HrmLeaveRequest'].status == 'approved',
+                M['HrmLeaveRequest'].date_from <= today,
+                M['HrmLeaveRequest'].date_to >= today,
+            ).distinct()
+            q = q.filter(Employee.id.in_(leave_ids))
+        sort_map = {
+            'name': Employee.name, 'code': Employee.code,
+            'salary': Employee.salary, 'id': Employee.id,
+        }
+        col = sort_map.get(sort, Employee.id)
+        q = q.order_by(col.asc() if order == 'asc' else col.desc())
+        pagination = paginate_query(q, default=20)
         departments = M['HrmDepartment'].query.filter_by(is_active=True).all()
+        emp_stats = svc.employee_list_stats(db, M)
+        rows = enrich_employees(pagination.items)
         return render_template(
             'hrm/employees.html',
-            employees=pagination.items,
+            employees=rows,
             pagination=pagination,
             departments=departments,
+            emp_stats=emp_stats,
             search=search, dept_id=dept_id, status=status,
+            sort=sort, order=order,
+            photo_url=photo_url,
         )
 
     @app.route('/hrm/employees/export')
@@ -136,6 +178,97 @@ def register_hrm(app, db, models, helpers):
             ['الكود', 'الاسم', 'الرقم القومي', 'الهاتف', 'البريد', 'القسم', 'الوظيفة', 'الراتب', 'الحالة', 'نشط'],
             'employees.csv',
         )
+
+    @app.route('/hrm/employees/export/pdf')
+    @login_required
+    @hrm_required('hrm_employees')
+    def hrm_employees_export_pdf():
+        rows = []
+        for e in Employee.query.order_by(Employee.name).all():
+            info = svc.resolve_employee_display(e, M)
+            rows.append([
+                e.code, e.name, info['dept_name'], info['position'],
+                e.phone or '', f'{e.salary or 0:,.2f}', info['status_label'],
+            ])
+        return svc.export_print_html(
+            'قائمة الموظفين',
+            ['الكود', 'الاسم', 'القسم', 'الوظيفة', 'الهاتف', 'الراتب', 'الحالة'],
+            rows,
+        )
+
+    @app.route('/hrm/employees/bulk', methods=['POST'])
+    @login_required
+    @hrm_required('hrm_employees')
+    def hrm_employees_bulk():
+        action = request.form.get('action')
+        ids = request.form.getlist('employee_ids')
+        if not ids:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'ok': False, 'message': 'لم يتم اختيار موظفين'})
+            flash('لم يتم اختيار موظفين', 'warning')
+            return redirect(url_for('hrm_employees'))
+        count = 0
+        for eid in ids:
+            emp = Employee.query.get(int(eid))
+            if not emp:
+                continue
+            if action == 'deactivate':
+                emp.is_active = False
+                emp.employment_status = 'inactive'
+                count += 1
+            elif action == 'activate':
+                emp.is_active = True
+                emp.employment_status = 'active'
+                count += 1
+        db.session.commit()
+        msg = f'تم تطبيق العملية على {count} موظف(ين)'
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'ok': True, 'message': msg, 'count': count})
+        flash(msg, 'success')
+        return redirect(url_for('hrm_employees'))
+
+    @app.route('/hrm/employees/<int:id>/activity')
+    @login_required
+    @hrm_required('hrm_employees')
+    def hrm_employee_activity(id):
+        emp = Employee.query.get_or_404(id)
+        timeline = svc.employee_activity_timeline(db, M, id)
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'employee': emp.name, 'timeline': timeline})
+        return render_template('hrm/employee_activity.html', emp=emp, timeline=timeline)
+
+    def _employee_qr_row(emp):
+        info = svc.resolve_employee_display(emp, M)
+        payload = svc.employee_qr_payload(emp)
+        return {
+            'emp': emp,
+            'dept': info['dept_name'],
+            'position': info['position'],
+            'payload': payload,
+            'qr_svg': svc.employee_qr_svg(payload),
+        }
+
+    @app.route('/hrm/employees/<int:id>/qr')
+    @login_required
+    @hrm_required('hrm_employees')
+    def hrm_employee_qr(id):
+        emp = Employee.query.get_or_404(id)
+        return render_template(
+            'hrm/employee_qr_print.html',
+            employees=[_employee_qr_row(emp)],
+            single=True,
+        )
+
+    @app.route('/hrm/employees/qr/print')
+    @login_required
+    @hrm_required('hrm_employees')
+    def hrm_employees_qr_bulk():
+        ids = request.args.getlist('ids', type=int)
+        q = Employee.query.filter_by(is_active=True)
+        if ids:
+            q = q.filter(Employee.id.in_(ids))
+        rows = [_employee_qr_row(emp) for emp in q.order_by(Employee.name).all()]
+        return render_template('hrm/employee_qr_print.html', employees=rows, single=False)
 
     @app.route('/hrm/employees/add', methods=['GET', 'POST'])
     @app.route('/hrm/employees/<int:id>/edit', methods=['GET', 'POST'])
@@ -165,6 +298,15 @@ def register_hrm(app, db, models, helpers):
                 position=request.form.get('position'),
                 department=request.form.get('department_legacy'),
             )
+            bio_id = (request.form.get('biometric_id') or '').strip() or None
+            if bio_id:
+                q = Employee.query.filter_by(biometric_id=bio_id)
+                if emp:
+                    q = q.filter(Employee.id != emp.id)
+                if q.first():
+                    flash('رقم البصمة مستخدم لموظف آخر', 'error')
+                    return redirect(url_for('hrm_employee_form', id=id) if id else url_for('hrm_employee_form'))
+            data['biometric_id'] = bio_id
             hd = request.form.get('hire_date')
             data['hire_date'] = datetime.strptime(hd, '%Y-%m-%d').date() if hd else None
             if data.get('department_id'):
@@ -311,6 +453,40 @@ def register_hrm(app, db, models, helpers):
         return redirect(url_for('hrm_designations'))
 
     # ── Attendance ────────────────────────────────────────────
+    def _device_or_session_ok():
+        data = request.get_json(silent=True) or {}
+        key = (
+            request.headers.get('X-HRM-Key') or request.headers.get('X-API-Key')
+            or data.get('api_key') or request.args.get('api_key')
+        )
+        if svc.verify_device_api_key(key):
+            return True
+        return current_user.is_authenticated
+
+    def _punch_from_request(source):
+        data = request.get_json(silent=True) if request.is_json else {}
+        if not data and request.form:
+            data = request.form.to_dict()
+        raw = data.get('scan') or data.get('employee_code') or data.get('code') or ''
+        parsed = svc.parse_attendance_scan(raw)
+        emp = svc.find_employee_for_punch(
+            code=parsed.get('code') or raw,
+            employee_id=data.get('employee_id') or parsed.get('employee_id'),
+            biometric_id=data.get('biometric_id') or data.get('user_id') or data.get('pin'),
+        )
+        if not emp:
+            return {'ok': False, 'error': 'employee_not_found', 'message': 'الموظف غير موجود'}, 404
+        action = data.get('action')  # None = auto toggle
+        result = svc.register_attendance_punch(
+            db, M, emp, source=source,
+            device_id=data.get('device_id'),
+            force_action=action if action in ('check_in', 'check_out') else None,
+        )
+        if result.get('ok'):
+            db.session.commit()
+            return result, 200
+        return result, 400
+
     @app.route('/hrm/attendance')
     @login_required
     @hrm_required('hrm_attendance')
@@ -320,10 +496,42 @@ def register_hrm(app, db, models, helpers):
         records = M['HrmAttendance'].query.filter_by(att_date=d).all()
         cards = svc.attendance_dashboard_today(M, db) if d == date.today() else {}
         employees = Employee.query.filter_by(is_active=True).all()
+        recent = svc.recent_attendance_logs(M, 15)
+        api_key_set = bool(svc.get_biometric_api_key())
         return render_template(
             'hrm/attendance.html', records=records, att_date=d,
-            cards=cards, employees=employees,
+            cards=cards, employees=employees, recent_logs=recent,
+            api_key_set=api_key_set,
         )
+
+    @app.route('/hrm/attendance/devices', methods=['GET', 'POST'])
+    @login_required
+    @hrm_required('hrm_attendance')
+    def hrm_attendance_devices():
+        if request.method == 'POST':
+            action = request.form.get('action', 'save')
+            if action == 'generate_key':
+                import secrets
+                svc.save_biometric_api_key(db, secrets.token_urlsafe(24))
+            else:
+                svc.save_biometric_api_key(db, request.form.get('api_key', ''))
+            db.session.commit()
+            flash('تم حفظ إعدادات الأجهزة', 'success')
+            return redirect(url_for('hrm_attendance_devices'))
+        api_key = svc.get_biometric_api_key()
+        base = request.url_root.rstrip('/')
+        return render_template(
+            'hrm/attendance_devices.html',
+            api_key=api_key,
+            punch_url=f'{base}/api/hrm/attendance/punch',
+            biometric_url=f'{base}/api/hrm/biometric',
+        )
+
+    @app.route('/hrm/attendance/kiosk')
+    @login_required
+    @hrm_required('hrm_attendance')
+    def hrm_attendance_kiosk():
+        return render_template('hrm/attendance_kiosk.html')
 
     @app.route('/hrm/attendance/manual', methods=['POST'])
     @login_required
@@ -358,78 +566,44 @@ def register_hrm(app, db, models, helpers):
     @hrm_required('hrm_attendance')
     def hrm_attendance_qr():
         if request.method == 'POST':
-            code = (request.form.get('employee_code') or '').strip()
-            emp = Employee.query.filter_by(code=code, is_active=True).first()
+            raw = (request.form.get('employee_code') or request.form.get('scan') or '').strip()
+            parsed = svc.parse_attendance_scan(raw)
+            emp = svc.find_employee_for_punch(
+                code=parsed.get('code') or raw,
+                employee_id=parsed.get('employee_id'),
+            )
             if not emp:
                 flash('كود الموظف غير صحيح', 'error')
                 return redirect(url_for('hrm_attendance_qr'))
-            now = datetime.now()
-            today = now.date()
-            HrmAttendance = M['HrmAttendance']
-            HrmAttendanceLog = M['HrmAttendanceLog']
-            rec = HrmAttendance.query.filter_by(employee_id=emp.id, att_date=today).first()
-            if not rec:
-                rec = HrmAttendance(
-                    employee_id=emp.id, att_date=today,
-                    check_in=now.time(), status='present', source='qr',
-                )
-                db.session.add(rec)
-                action = 'check_in'
-            elif not rec.check_out:
-                rec.check_out = now.time()
-                rec.working_hours = svc.calc_working_hours(rec.check_in, rec.check_out)
-                action = 'check_out'
-            else:
-                flash('تم تسجيل الحضور والانصراف مسبقاً', 'warning')
-                return redirect(url_for('hrm_attendance_qr'))
-            db.session.add(HrmAttendanceLog(
-                employee_id=emp.id, action=action, source='qr',
-            ))
+            result = svc.register_attendance_punch(db, M, emp, source='qr')
             db.session.commit()
-            flash(f'تم تسجيل {"حضور" if action == "check_in" else "انصراف"} — {emp.name}', 'success')
+            flash(result.get('message', 'تم'), 'success' if result.get('ok') else 'warning')
             return redirect(url_for('hrm_attendance_qr'))
         return render_template('hrm/attendance_qr.html')
 
+    @app.route('/api/hrm/attendance/punch', methods=['POST'])
+    def api_hrm_attendance_punch():
+        """تسجيل حضور/انصراف — QR أو كود (مفتاح API أو جلسة)."""
+        if not _device_or_session_ok():
+            return jsonify({'ok': False, 'error': 'unauthorized'}), 401
+        payload = request.get_json(silent=True) or {}
+        source = payload.get('source') or 'api'
+        result, status = _punch_from_request(source)
+        return jsonify(result), status
+
+    @app.route('/api/hrm/attendance/recent')
+    def api_hrm_attendance_recent():
+        if not _device_or_session_ok():
+            return jsonify({'ok': False, 'error': 'unauthorized'}), 401
+        return jsonify({'ok': True, 'items': svc.recent_attendance_logs(M, 25)})
+
     @app.route('/api/hrm/biometric', methods=['POST'])
-    @login_required
     def api_hrm_biometric():
-        """جاهز لربط أجهزة البصمة — يرسل employee_code و action."""
-        data = request.get_json(silent=True) or {}
-        code = (data.get('employee_code') or '').strip()
-        action = data.get('action', 'check_in')
-        emp = Employee.query.filter_by(code=code, is_active=True).first()
-        if not emp:
-            return jsonify({'ok': False, 'error': 'employee not found'}), 404
-        now = datetime.now()
-        today = now.date()
-        HrmAttendance = M['HrmAttendance']
-        HrmAttendanceLog = M['HrmAttendanceLog']
-        rec = HrmAttendance.query.filter_by(employee_id=emp.id, att_date=today).first()
-        if action == 'check_in':
-            if not rec:
-                rec = HrmAttendance(
-                    employee_id=emp.id, att_date=today,
-                    check_in=now.time(), status='present', source='biometric',
-                )
-                db.session.add(rec)
-            else:
-                rec.check_in = rec.check_in or now.time()
-        else:
-            if not rec:
-                rec = HrmAttendance(
-                    employee_id=emp.id, att_date=today,
-                    check_out=now.time(), status='present', source='biometric',
-                )
-                db.session.add(rec)
-            else:
-                rec.check_out = now.time()
-                rec.working_hours = svc.calc_working_hours(rec.check_in, rec.check_out)
-        db.session.add(HrmAttendanceLog(
-            employee_id=emp.id, action=action, source='biometric',
-            device_id=data.get('device_id'),
-        ))
-        db.session.commit()
-        return jsonify({'ok': True, 'employee': emp.name, 'action': action})
+        """ربط أجهزة البصمة — يرسل biometric_id ويُسجّل تلقائياً."""
+        if not _device_or_session_ok():
+            return jsonify({'ok': False, 'error': 'unauthorized', 'message': 'مفتاح API غير صحيح'}), 401
+        result, status = _punch_from_request('biometric')
+        return jsonify(result), status
 
     # ── Leaves ──────────────────────────────────────────────────
     @app.route('/hrm/leaves')
@@ -460,14 +634,6 @@ def register_hrm(app, db, models, helpers):
             status='pending',
         )
         db.session.add(lr)
-        db.session.flush()
-        ename = Employee.query.get(lr.employee_id)
-        ename_s = ename.name if ename else f'موظف #{lr.employee_id}'
-        for u in svc.notify_hr_managers(db, M):
-            svc.push_notification(
-                db, M, u.id, 'leave_request', 'طلب إجازة جديد',
-                f'{ename_s} — طلب إجازة بانتظار الاعتماد', '/hrm/leaves?status=pending',
-            )
         db.session.commit()
         flash('تم إرسال طلب الإجازة', 'success')
         return redirect(url_for('hrm_leaves'))
@@ -482,16 +648,21 @@ def register_hrm(app, db, models, helpers):
             lr.manager_approved = True
             lr.manager_approved_by = current_user.id
             lr.manager_approved_at = datetime.utcnow()
+        elif step == 'hr':
+            lr.hr_approved = True
+            lr.hr_approved_by = current_user.id
+            lr.hr_approved_at = datetime.utcnow()
+        elif step == 'finance':
+            lr.finance_approved = True
+            lr.finance_approved_by = current_user.id
+            lr.finance_approved_at = datetime.utcnow()
+            if lr.manager_approved and lr.hr_approved:
+                lr.status = 'approved'
+                svc.dismiss_leave_notifications(db, M, employee_id=lr.employee_id, leave_id=lr.id)
         else:
             lr.hr_approved = True
             lr.hr_approved_by = current_user.id
             lr.hr_approved_at = datetime.utcnow()
-            if lr.manager_approved or current_user.role in ('hr_manager', 'admin', 'developer'):
-                lr.status = 'approved'
-                svc.push_notification(
-                    db, M, None, 'leave_approved', 'اعتماد إجازة',
-                    'تم اعتماد طلب الإجازة', '/hrm/leaves', employee_id=lr.employee_id,
-                )
         db.session.commit()
         flash('تمت الموافقة على المرحلة', 'success')
         return redirect(url_for('hrm_leaves'))
@@ -505,6 +676,7 @@ def register_hrm(app, db, models, helpers):
         lr.rejected_by = current_user.id
         lr.rejected_at = datetime.utcnow()
         lr.rejection_reason = request.form.get('reason')
+        svc.dismiss_leave_notifications(db, M, employee_id=lr.employee_id, leave_id=lr.id)
         db.session.commit()
         flash('تم رفض الطلب', 'warning')
         return redirect(url_for('hrm_leaves'))
@@ -641,8 +813,6 @@ def register_hrm(app, db, models, helpers):
         p.approved_by = current_user.id
         p.approved_at = datetime.utcnow()
         svc.accrue_payroll_journal(db, M, p, current_user.id)
-        for u in svc.notify_hr_managers(db, M):
-            svc.push_notification(db, M, u.id, 'payroll', 'اعتماد رواتب', p.title or 'مسير رواتب', f'/hrm/payroll/{p.id}')
         db.session.commit()
         flash('تم اعتماد المسير وإنشاء القيد المحاسبي', 'success')
         return redirect(url_for('hrm_payroll_detail', id=id))
@@ -917,18 +1087,32 @@ def register_hrm(app, db, models, helpers):
         if not hrm_can('hrm_employees'):
             return jsonify({'error': 'forbidden'}), 403
         page = request.args.get('page', 1, type=int)
-        q = request.args.get('q', '')
+        per_page = min(request.args.get('per_page', 20, type=int), 100)
+        q = (request.args.get('q') or '').strip()
+        dept_id = request.args.get('department_id', type=int)
+        status = request.args.get('status')
+        sort = request.args.get('sort', 'name')
+        order = request.args.get('order', 'asc')
         query = Employee.query
         if q:
-            query = query.filter(Employee.name.contains(q))
-        p = query.paginate(page=page, per_page=20, error_out=False)
+            query = query.filter(db.or_(
+                Employee.name.contains(q), Employee.code.contains(q),
+                Employee.phone.contains(q), Employee.department.contains(q),
+            ))
+        if dept_id:
+            query = query.filter_by(department_id=dept_id)
+        if status == 'active':
+            query = query.filter_by(is_active=True)
+        elif status == 'inactive':
+            query = query.filter_by(is_active=False)
+        sort_map = {'name': Employee.name, 'code': Employee.code, 'salary': Employee.salary, 'id': Employee.id}
+        col = sort_map.get(sort, Employee.name)
+        query = query.order_by(col.asc() if order == 'asc' else col.desc())
+        p = query.paginate(page=page, per_page=per_page, error_out=False)
         return jsonify({
-            'items': [{
-                'id': e.id, 'code': e.code, 'name': e.name,
-                'department_id': getattr(e, 'department_id', None),
-                'salary': e.salary, 'is_active': e.is_active,
-            } for e in p.items],
-            'total': p.total, 'pages': p.pages, 'page': page,
+            'items': [svc.serialize_employee(e, M, photo_url) for e in p.items],
+            'total': p.total, 'pages': p.pages, 'page': page, 'per_page': per_page,
+            'stats': svc.employee_list_stats(db, M),
         })
 
     @app.route('/api/hrm/employees', methods=['POST'])
@@ -970,24 +1154,25 @@ def register_hrm(app, db, models, helpers):
         stats = svc.hr_dashboard_stats(db, M)
         dl, dv = svc.department_chart_data(db, M)
         pl, pv = svc.payroll_chart_data(db, M)
-        return jsonify({'stats': stats, 'departments': {'labels': dl, 'values': dv},
-                        'payroll': {'labels': pl, 'values': pv}})
+        al, ap, ab = svc.attendance_30_days(db, M)
+        abs_l, abs_r = svc.absence_rate_chart_data(db, M)
+        return jsonify({
+            'stats': stats,
+            'departments': {'labels': dl, 'values': dv},
+            'payroll': {'labels': pl, 'values': pv},
+            'attendance': {'labels': al, 'present': ap, 'absent': ab},
+            'absence_rate': {'labels': abs_l, 'values': abs_r},
+        })
 
     @app.route('/api/hrm/notifications')
     @login_required
     def api_hrm_notifications():
-        q = M['HrmNotification'].query.filter_by(is_read=False)
-        if current_user.role not in ('developer', 'admin', 'hr_manager'):
-            q = q.filter(
-                db.or_(
-                    M['HrmNotification'].user_id == current_user.id,
-                    M['HrmNotification'].user_id == None,
-                )
-            )
-        items = q.order_by(M['HrmNotification'].created_at.desc()).limit(20).all()
-        return jsonify({'items': [{
-            'id': n.id, 'title': n.title, 'message': n.message, 'link': n.link, 'type': n.ntype,
-        } for n in items], 'count': len(items)})
+        feed = svc.collect_hrm_notification_feed(db, M, current_user)
+        return jsonify({
+            'items': feed.get('items', []) + feed.get('stored', []),
+            'pending_leaves': feed.get('pending_leaves', 0),
+            'count': len(feed.get('items', [])) + len(feed.get('stored', [])),
+        })
 
     return {
         'hrm_can': hrm_can,

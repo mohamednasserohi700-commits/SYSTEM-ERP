@@ -40,6 +40,168 @@ def calc_working_hours(check_in, check_out):
     return round((t2 - t1).total_seconds() / 3600, 2)
 
 
+def employee_qr_payload(emp):
+    """محتوى QR للموظف — يُمسح عند بوابة الحضور."""
+    code = (emp.code or '').strip()
+    return f'ERP-HRM|{code}|{emp.id}'
+
+
+def employee_qr_svg(payload, size_px=180):
+    """توليد QR كـ SVG من السيرفر — للطباعة بدون اعتماد على JavaScript."""
+    import io
+    try:
+        import qrcode
+        from qrcode.image.svg import SvgPathImage
+        qr = qrcode.QRCode(version=1, box_size=10, border=2)
+        qr.add_data(payload)
+        qr.make(fit=True)
+        img = qr.make_image(image_factory=SvgPathImage)
+        buf = io.BytesIO()
+        img.save(buf)
+        svg = buf.getvalue().decode('utf-8')
+        svg = svg.replace(
+            '<svg',
+            f'<svg width="{size_px}" height="{size_px}" style="display:block;margin:0 auto;"',
+            1,
+        )
+        return svg
+    except Exception:
+        return ''
+
+
+def parse_attendance_scan(raw):
+    """تحليل QR أو كود موظف."""
+    raw = (raw or '').strip()
+    if raw.startswith('ERP-HRM|'):
+        parts = raw.split('|')
+        code = parts[1].strip() if len(parts) > 1 else ''
+        eid = int(parts[2]) if len(parts) > 2 and str(parts[2]).isdigit() else None
+        return {'code': code, 'employee_id': eid}
+    return {'code': raw, 'employee_id': None}
+
+
+def find_employee_for_punch(code=None, employee_id=None, biometric_id=None):
+    from app import Employee
+    if biometric_id:
+        bid = str(biometric_id).strip()
+        if bid:
+            emp = Employee.query.filter_by(biometric_id=bid, is_active=True).first()
+            if emp:
+                return emp
+    if employee_id:
+        emp = Employee.query.filter_by(id=int(employee_id), is_active=True).first()
+        if emp:
+            return emp
+    if code:
+        return Employee.query.filter_by(code=str(code).strip(), is_active=True).first()
+    return None
+
+
+def register_attendance_punch(db, models, employee, source='manual', device_id=None, force_action=None):
+    """تسجيل حضور/انصراف تلقائي (QR أو بصمة)."""
+    now = datetime.now()
+    today = now.date()
+    HrmAttendance = models['HrmAttendance']
+    HrmAttendanceLog = models['HrmAttendanceLog']
+    rec = HrmAttendance.query.filter_by(employee_id=employee.id, att_date=today).first()
+
+    if force_action == 'check_in':
+        if rec and rec.check_in:
+            return {'ok': False, 'error': 'already_checked_in', 'message': 'تم تسجيل الحضور مسبقاً'}
+        if not rec:
+            rec = HrmAttendance(
+                employee_id=employee.id, att_date=today,
+                check_in=now.time(), status='present', source=source,
+            )
+            db.session.add(rec)
+        else:
+            rec.check_in = now.time()
+            rec.status = 'present'
+            rec.source = source
+        action = 'check_in'
+    elif force_action == 'check_out':
+        if not rec or not rec.check_in:
+            return {'ok': False, 'error': 'no_check_in', 'message': 'لم يُسجّل حضور اليوم'}
+        if rec.check_out:
+            return {'ok': False, 'error': 'already_complete', 'message': 'تم تسجيل الانصراف مسبقاً'}
+        rec.check_out = now.time()
+        rec.working_hours = calc_working_hours(rec.check_in, rec.check_out)
+        rec.source = source
+        action = 'check_out'
+    else:
+        if not rec:
+            rec = HrmAttendance(
+                employee_id=employee.id, att_date=today,
+                check_in=now.time(), status='present', source=source,
+            )
+            db.session.add(rec)
+            action = 'check_in'
+        elif not rec.check_out:
+            rec.check_out = now.time()
+            rec.working_hours = calc_working_hours(rec.check_in, rec.check_out)
+            rec.source = source
+            action = 'check_out'
+        else:
+            return {'ok': False, 'error': 'already_complete', 'message': 'تم تسجيل الحضور والانصراف مسبقاً'}
+
+    db.session.add(HrmAttendanceLog(
+        employee_id=employee.id, action=action, source=source, device_id=device_id,
+    ))
+    action_ar = 'حضور' if action == 'check_in' else 'انصراف'
+    return {
+        'ok': True,
+        'action': action,
+        'action_label': action_ar,
+        'message': f'تم تسجيل {action_ar} — {employee.name}',
+        'employee': employee.name,
+        'employee_code': employee.code,
+        'time': now.strftime('%H:%M:%S'),
+        'source': source,
+    }
+
+
+def get_biometric_api_key():
+    from app import AppSetting
+    row = AppSetting.query.filter_by(key='hrm_biometric_api_key').first()
+    return (row.value or '').strip() if row else ''
+
+
+def save_biometric_api_key(db, key):
+    from app import AppSetting
+    row = AppSetting.query.filter_by(key='hrm_biometric_api_key').first()
+    if not row:
+        row = AppSetting(key='hrm_biometric_api_key')
+        db.session.add(row)
+    row.value = (key or '').strip()
+
+
+def verify_device_api_key(provided_key):
+    expected = get_biometric_api_key()
+    if not expected:
+        return False
+    return (provided_key or '').strip() == expected
+
+
+def recent_attendance_logs(models, limit=20):
+    HrmAttendanceLog = models['HrmAttendanceLog']
+    from app import Employee
+    logs = HrmAttendanceLog.query.order_by(HrmAttendanceLog.log_time.desc()).limit(limit).all()
+    rows = []
+    for lg in logs:
+        emp = Employee.query.get(lg.employee_id)
+        rows.append({
+            'employee': emp.name if emp else f'#{lg.employee_id}',
+            'code': emp.code if emp else '',
+            'action': lg.action,
+            'action_label': 'حضور' if lg.action == 'check_in' else 'انصراف',
+            'source': lg.source or 'manual',
+            'device_id': lg.device_id or '',
+            'time': lg.log_time.strftime('%H:%M:%S') if lg.log_time else '',
+            'date': lg.log_time.strftime('%Y-%m-%d') if lg.log_time else '',
+        })
+    return rows
+
+
 def attendance_dashboard_today(models, db):
     HrmAttendance = models['HrmAttendance']
     from app import Employee
@@ -456,63 +618,164 @@ def hard_delete_designation(db, models, des_id):
     return True, None
 
 
+def cleanup_stale_hrm_notifications(db, models):
+    """تنظيف الإشعارات القديمة/الوهمية التي لا تطابق الواقع."""
+    import re
+    from app import Employee
+    HrmNotification = models['HrmNotification']
+    HrmLeaveRequest = models['HrmLeaveRequest']
+    HrmPayroll = models['HrmPayroll']
+    changed = False
+
+    for lr in HrmLeaveRequest.query.filter_by(status='pending').all():
+        if not Employee.query.get(lr.employee_id):
+            lr.status = 'rejected'
+            lr.rejection_reason = 'موظف غير موجود'
+            changed = True
+
+    stale_types = ('leave_request', 'leave', 'leave_approved', 'payroll')
+    for n in HrmNotification.query.filter_by(is_read=False).filter(
+        HrmNotification.ntype.in_(stale_types)
+    ).all():
+        n.is_read = True
+        changed = True
+
+    for n in HrmNotification.query.filter_by(is_read=False).all():
+        if n.ntype in stale_types:
+            continue
+        stale = False
+        if n.employee_id and not Employee.query.get(n.employee_id):
+            stale = True
+        if n.link and '/hrm/payroll/' in n.link:
+            m = re.search(r'/hrm/payroll/(\d+)', n.link)
+            if not m or not HrmPayroll.query.get(int(m.group(1))):
+                stale = True
+        if stale:
+            n.is_read = True
+            changed = True
+
+    if changed:
+        db.session.commit()
+
+
+def dismiss_leave_notifications(db, models, employee_id=None, leave_id=None):
+    """إغلاق إشعارات إجازة بعد الاعتماد/الرفض."""
+    HrmNotification = models['HrmNotification']
+    q = HrmNotification.query.filter_by(is_read=False).filter(
+        HrmNotification.ntype.in_(('leave_request', 'leave', 'leave_approved'))
+    )
+    if employee_id:
+        q = q.filter_by(employee_id=employee_id)
+    q.update({'is_read': True}, synchronize_session=False)
+
+
 def collect_hrm_notification_feed(db, models, user):
-    """إشعارات HR للجرس العلوي — طلبات إجازة + إشعارات مخزنة."""
-    from app import user_can
+    """إشعارات HR دقيقة — مبنية على استعلامات حية فقط."""
+    from app import user_can, Employee
     if not user or not getattr(user, 'is_authenticated', False):
         return {'pending_leaves': 0, 'items': [], 'stored': []}
     if not (
         user_can(user, 'hrm') or user_can(user, 'hrm_leaves')
         or user_can(user, 'hrm_dashboard') or user_can(user, 'hrm_approve')
+        or user_can(user, 'hrm_payroll')
     ):
         return {'pending_leaves': 0, 'items': [], 'stored': []}
+
+    cleanup_stale_hrm_notifications(db, models)
+
     HrmLeaveRequest = models['HrmLeaveRequest']
+    HrmPayroll = models['HrmPayroll']
     HrmNotification = models['HrmNotification']
-    pending_q = HrmLeaveRequest.query.filter_by(status='pending').order_by(
-        HrmLeaveRequest.created_at.desc()
-    )
-    pending = pending_q.limit(15).all()
     items = []
-    for lr in pending:
-        ename = lr.employee.name if lr.employee else f'موظف #{lr.employee_id}'
+    pending_count = 0
+
+    pending_rows = HrmLeaveRequest.query.filter_by(status='pending').order_by(
+        HrmLeaveRequest.created_at.desc()
+    ).limit(10).all()
+    for lr in pending_rows:
+        emp = Employee.query.get(lr.employee_id)
+        if not emp:
+            continue
+        pending_count += 1
         ltype = lr.leave_type.name if lr.leave_type else 'إجازة'
         items.append({
             'kind': 'leave',
             'id': lr.id,
-            'title': f'طلب إجازة — {ename}',
+            'title': f'طلب إجازة — {emp.name}',
             'message': f'{ltype} | {lr.date_from} — {lr.date_to} ({lr.days_count} يوم)',
-            'link': '/hrm/leaves?status=pending',
+            'link': f'/hrm/leaves?status=pending',
             'icon': 'calendar-alt',
             'tone': 'warn',
         })
-    nq = HrmNotification.query.filter_by(is_read=False).order_by(HrmNotification.created_at.desc())
-    if getattr(user, 'role', None) not in ('developer', 'admin', 'hr_manager'):
-        nq = nq.filter(
-            db.or_(
-                HrmNotification.user_id == user.id,
-                HrmNotification.user_id == None,
-            )
-        )
-    stored_rows = nq.limit(10).all()
+
+    can_payroll = user_can(user, 'hrm_payroll') or user_can(user, 'hrm_approve') or user_can(user, 'hrm')
+    if can_payroll:
+        drafts = HrmPayroll.query.filter_by(status='draft').order_by(
+            HrmPayroll.period_year.desc(), HrmPayroll.period_month.desc()
+        ).limit(5).all()
+        for p in drafts:
+            label = p.title or f'رواتب {p.period_year}/{p.period_month:02d}'
+            items.append({
+                'kind': 'payroll_draft',
+                'id': p.id,
+                'title': 'مسير رواتب بانتظار الاعتماد',
+                'message': f'{label} — صافي {p.total_net or 0:,.0f}',
+                'link': f'/hrm/payroll/{p.id}',
+                'icon': 'file-invoice-dollar',
+                'tone': 'warn',
+            })
+
+        approved = HrmPayroll.query.filter_by(status='approved').order_by(
+            HrmPayroll.period_year.desc(), HrmPayroll.period_month.desc()
+        ).limit(5).all()
+        for p in approved:
+            sm = payroll_payment_summary(p)
+            pending_n = sm['total_count'] - sm['paid_count']
+            if pending_n <= 0:
+                continue
+            label = p.title or f'رواتب {p.period_year}/{p.period_month:02d}'
+            items.append({
+                'kind': 'payroll_pay',
+                'id': p.id,
+                'title': 'رواتب معتمدة — بانتظار الصرف',
+                'message': f'{label} — {pending_n} موظف ({sm["pending_amount"]:,.0f})',
+                'link': f'/hrm/payroll/{p.id}',
+                'icon': 'hand-holding-usd',
+                'tone': 'info',
+            })
+
     stored = []
-    for n in stored_rows:
+    nq = HrmNotification.query.filter_by(is_read=False).filter(
+        ~HrmNotification.ntype.in_(('leave_request', 'leave', 'leave_approved', 'payroll'))
+    ).filter(
+        db.or_(
+            HrmNotification.user_id == user.id,
+            HrmNotification.user_id == None,
+        )
+    ).order_by(HrmNotification.created_at.desc()).limit(5)
+    for n in nq.all():
         stored.append({
             'kind': 'stored',
             'id': n.id,
             'title': n.title or 'إشعار HR',
             'message': (n.message or '')[:120],
-            'link': n.link or '/hrm/leaves',
+            'link': n.link or '/hrm/dashboard',
             'icon': 'bell',
             'tone': 'info',
         })
+
     return {
-        'pending_leaves': len(pending),
+        'pending_leaves': pending_count,
         'items': items,
         'stored': stored,
     }
 
 
 def push_notification(db, models, user_id, ntype, title, message, link=None, employee_id=None):
+    """إشعار مخزّن — للتنبيهات غير المرتبطة بجدول حي (عقود، إلخ)."""
+    skip_live = ('leave_request', 'leave', 'leave_approved', 'payroll')
+    if ntype in skip_live:
+        return None
     HrmNotification = models['HrmNotification']
     n = HrmNotification(
         user_id=user_id,
@@ -550,6 +813,8 @@ def check_contract_expiry(db, models, days_ahead=30):
 def hr_dashboard_stats(db, models):
     from app import Employee
     HrmLeaveRequest = models['HrmLeaveRequest']
+    HrmPayroll = models['HrmPayroll']
+    HrmEmployeeLoan = models['HrmEmployeeLoan']
     today = date.today()
     total = Employee.query.count()
     active = Employee.query.filter_by(is_active=True).count()
@@ -564,13 +829,221 @@ def hr_dashboard_stats(db, models):
         HrmLeaveRequest.date_to >= today,
     ).count()
     att = attendance_dashboard_today(models, db)
+    payroll_month = HrmPayroll.query.filter_by(
+        period_year=today.year, period_month=today.month,
+    ).first()
+    payroll_amount = (payroll_month.total_net or 0) if payroll_month else 0
+    open_loans = HrmEmployeeLoan.query.filter(
+        HrmEmployeeLoan.status == 'active',
+        HrmEmployeeLoan.remaining > 0,
+    ).count()
+    open_loans_amount = db.session.query(
+        db.func.coalesce(db.func.sum(HrmEmployeeLoan.remaining), 0)
+    ).filter(
+        HrmEmployeeLoan.status == 'active',
+        HrmEmployeeLoan.remaining > 0,
+    ).scalar() or 0
     return {
         'total_employees': total,
         'active_employees': active,
         'new_employees': new_hires,
         'on_leave': on_leave,
         'attendance_today': att,
+        'payroll_this_month': payroll_amount,
+        'open_loans': open_loans,
+        'open_loans_amount': float(open_loans_amount),
     }
+
+
+def employee_list_stats(db, models):
+    """إحصائيات صفحة الموظفين."""
+    from app import Employee
+    HrmLeaveRequest = models['HrmLeaveRequest']
+    today = date.today()
+    month_start = today.replace(day=1)
+    total = Employee.query.count()
+    active = Employee.query.filter_by(is_active=True).count()
+    on_leave = HrmLeaveRequest.query.filter(
+        HrmLeaveRequest.status == 'approved',
+        HrmLeaveRequest.date_from <= today,
+        HrmLeaveRequest.date_to >= today,
+    ).count()
+    new_hires = Employee.query.filter(
+        Employee.hire_date != None,
+        Employee.hire_date >= month_start,
+    ).count()
+    return {
+        'total': total,
+        'active': active,
+        'on_leave': on_leave,
+        'new': new_hires,
+    }
+
+
+def resolve_employee_display(emp, models):
+    """بيانات عرض الموظف مع القسم والوظيفة."""
+    HrmDepartment = models['HrmDepartment']
+    HrmDesignation = models['HrmDesignation']
+    dept_name = emp.department or '—'
+    if getattr(emp, 'department_id', None):
+        d = HrmDepartment.query.get(emp.department_id)
+        if d:
+            dept_name = d.name
+    pos = emp.position or '—'
+    if getattr(emp, 'designation_id', None):
+        des = HrmDesignation.query.get(emp.designation_id)
+        if des:
+            pos = des.title
+    status_label = emp.employment_status or ('نشط' if emp.is_active else 'غير نشط')
+    return {'dept_name': dept_name, 'position': pos, 'status_label': status_label}
+
+
+def serialize_employee(emp, models, photo_url_fn=None):
+    """JSON serializer for employee API."""
+    info = resolve_employee_display(emp, models)
+    photo = None
+    if getattr(emp, 'photo', None) and photo_url_fn:
+        photo = photo_url_fn(emp.photo)
+    return {
+        'id': emp.id,
+        'code': emp.code,
+        'name': emp.name,
+        'phone': emp.phone or '',
+        'email': emp.email or '',
+        'department': info['dept_name'],
+        'department_id': getattr(emp, 'department_id', None),
+        'position': info['position'],
+        'salary': emp.salary or 0,
+        'is_active': emp.is_active,
+        'status': info['status_label'],
+        'photo': photo,
+        'hire_date': emp.hire_date.isoformat() if emp.hire_date else None,
+    }
+
+
+def employee_activity_timeline(db, models, employee_id, limit=15):
+    """خط زمني لنشاط الموظف."""
+    from app import Employee, Expense
+    HrmLeaveRequest = models['HrmLeaveRequest']
+    HrmPayrollDetail = models['HrmPayrollDetail']
+    HrmEmployeeLoan = models['HrmEmployeeLoan']
+    HrmEmployeeDeduction = models['HrmEmployeeDeduction']
+    HrmEmployeeBonus = models['HrmEmployeeBonus']
+    events = []
+
+    emp = Employee.query.get(employee_id)
+    if emp and emp.hire_date:
+        events.append({
+            'date': emp.hire_date.isoformat(),
+            'title': 'تاريخ التعيين',
+            'detail': f'انضم {emp.name} للعمل',
+            'icon': 'fa-user-plus',
+            'tone': 'green',
+        })
+
+    for lr in HrmLeaveRequest.query.filter_by(employee_id=employee_id).order_by(
+        HrmLeaveRequest.created_at.desc()
+    ).limit(5).all():
+        events.append({
+            'date': (lr.created_at or datetime.utcnow()).isoformat(),
+            'title': 'طلب إجازة',
+            'detail': f'{lr.date_from} — {lr.date_to} ({lr.status})',
+            'icon': 'fa-calendar-alt',
+            'tone': 'blue' if lr.status == 'approved' else 'orange',
+        })
+
+    for pd in HrmPayrollDetail.query.filter_by(employee_id=employee_id).order_by(
+        HrmPayrollDetail.id.desc()
+    ).limit(5).all():
+        p = models['HrmPayroll'].query.get(pd.payroll_id)
+        if not p:
+            continue
+        events.append({
+            'date': (p.created_at or datetime.utcnow()).isoformat(),
+            'title': 'مسير رواتب',
+            'detail': f'{p.period_year}/{p.period_month:02d} — {pd.net_salary:,.2f}',
+            'icon': 'fa-money-check-alt',
+            'tone': 'gold',
+        })
+
+    for loan in HrmEmployeeLoan.query.filter_by(employee_id=employee_id).order_by(
+        HrmEmployeeLoan.created_at.desc()
+    ).limit(3).all():
+        events.append({
+            'date': (loan.created_at or datetime.utcnow()).isoformat(),
+            'title': 'سلفة',
+            'detail': f'{loan.amount:,.2f} — متبقي {loan.remaining:,.2f}',
+            'icon': 'fa-hand-holding-usd',
+            'tone': 'purple',
+        })
+
+    for d in HrmEmployeeDeduction.query.filter_by(employee_id=employee_id).order_by(
+        HrmEmployeeDeduction.deduction_date.desc()
+    ).limit(3).all():
+        events.append({
+            'date': (d.deduction_date or date.today()).isoformat(),
+            'title': 'خصم',
+            'detail': f'{d.title} — {d.amount:,.2f}',
+            'icon': 'fa-minus-circle',
+            'tone': 'red',
+        })
+
+    for b in HrmEmployeeBonus.query.filter_by(employee_id=employee_id).order_by(
+        HrmEmployeeBonus.bonus_date.desc()
+    ).limit(3).all():
+        events.append({
+            'date': (b.bonus_date or date.today()).isoformat(),
+            'title': 'مكافأة',
+            'detail': f'{b.title} — {b.amount:,.2f}',
+            'icon': 'fa-gift',
+            'tone': 'green',
+        })
+
+    events.sort(key=lambda x: x['date'], reverse=True)
+    return events[:limit]
+
+
+def absence_rate_chart_data(db, models, months=6):
+    """معدل الغياب الشهري (%)."""
+    from app import Employee
+    HrmAttendance = models['HrmAttendance']
+    today = date.today()
+    labels, rates = [], []
+    active_count = Employee.query.filter_by(is_active=True).count() or 1
+    for i in range(months - 1, -1, -1):
+        m = today.month - i
+        y = today.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        _, last_day = monthrange(y, m)
+        start = date(y, m, 1)
+        end = date(y, m, last_day)
+        absent = HrmAttendance.query.filter(
+            HrmAttendance.att_date >= start,
+            HrmAttendance.att_date <= end,
+            HrmAttendance.status == 'absent',
+        ).count()
+        work_days = last_day * active_count
+        rate = round((absent / work_days * 100) if work_days else 0, 1)
+        labels.append(f'{y}/{m:02d}')
+        rates.append(rate)
+    return labels, rates
+
+
+def leave_workflow_step(lr):
+    """حالة سير عمل الإجازة."""
+    if lr.status == 'rejected':
+        return 'rejected'
+    if lr.status == 'approved' and getattr(lr, 'finance_approved', False):
+        return 'completed'
+    if getattr(lr, 'finance_approved', False):
+        return 'finance'
+    if lr.hr_approved:
+        return 'finance_pending'
+    if lr.manager_approved:
+        return 'hr_pending'
+    return 'manager_pending'
 
 
 def department_chart_data(db, models):
@@ -628,6 +1101,29 @@ def export_csv_response(rows, headers, filename):
         mimetype='text/csv; charset=utf-8-sig',
         headers={'Content-Disposition': f'attachment; filename={filename}'},
     )
+
+
+def export_print_html(title, headers, rows):
+    """صفحة HTML للطباعة / PDF."""
+    from flask import Response
+    ths = ''.join(f'<th>{h}</th>' for h in headers)
+    trs = ''
+    for row in rows:
+        tds = ''.join(f'<td>{c}</td>' for c in row)
+        trs += f'<tr>{tds}</tr>'
+    html = f'''<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
+<title>{title}</title><style>
+body{{font-family:Cairo,sans-serif;padding:24px;color:#111}}
+h1{{font-size:18px;color:#D49A16;border-bottom:2px solid #D49A16;padding-bottom:8px}}
+table{{width:100%;border-collapse:collapse;margin-top:16px}}
+th,td{{border:1px solid #ddd;padding:8px 10px;font-size:12px;text-align:right}}
+th{{background:#f8f8f8;color:#333}}
+@media print{{body{{padding:0}}}}
+</style></head><body>
+<h1>{title}</h1>
+<table><thead><tr>{ths}</tr></thead><tbody>{trs}</tbody></table>
+<script>window.onload=function(){{window.print()}}</script></body></html>'''
+    return Response(html, mimetype='text/html; charset=utf-8')
 
 
 def seed_leave_types(db, models):

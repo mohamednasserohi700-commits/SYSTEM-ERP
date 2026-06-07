@@ -228,6 +228,7 @@ class Employee(db.Model):
     manager_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'))
+    biometric_id = db.Column(db.String(80), unique=True)  # معرف البصمة في الجهاز
     salary = db.Column(db.Float, default=0)
     allowances = db.Column(db.Float, default=0)
     hire_date = db.Column(db.Date)
@@ -1063,6 +1064,7 @@ def ensure_schema():
                 ('allowances', 'FLOAT DEFAULT 0'),
                 ('employment_status', "VARCHAR(30) DEFAULT 'active'"),
                 ('contract_type', "VARCHAR(40) DEFAULT 'permanent'"),
+                ('biometric_id', 'VARCHAR(80)'),
             ]
             for col, ctype in emp_cols:
                 if col not in ecols:
@@ -1079,6 +1081,16 @@ def ensure_schema():
                 if col not in pcols:
                     with db.engine.begin() as conn:
                         conn.execute(text(f'ALTER TABLE hrm_payroll_detail ADD COLUMN {col} {ctype}'))
+        if 'hrm_leave_request' in tables:
+            lcols = {c['name'] for c in insp.get_columns('hrm_leave_request')}
+            for col, ctype in [
+                ('finance_approved', 'BOOLEAN DEFAULT 0'),
+                ('finance_approved_by', 'INTEGER'),
+                ('finance_approved_at', 'DATETIME'),
+            ]:
+                if col not in lcols:
+                    with db.engine.begin() as conn:
+                        conn.execute(text(f'ALTER TABLE hrm_leave_request ADD COLUMN {col} {ctype}'))
     except Exception:
         pass
 
@@ -3726,8 +3738,8 @@ def api_notifications():
             hrm_feed = hrm_svc.collect_hrm_notification_feed(db, _hrm_models, current_user)
     except Exception:
         pass
-    hrm_count = hrm_feed.get('pending_leaves', 0) + len(hrm_feed.get('stored', []))
     hrm_items = hrm_feed.get('items', []) + hrm_feed.get('stored', [])
+    hrm_count = len(hrm_items)
     return jsonify({
         'pending_transfers': pending_transfers,
         'low_stock': low_stock,
