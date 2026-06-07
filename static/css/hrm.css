@@ -1,0 +1,227 @@
+/* ProERP — HRM Enterprise Module */
+:root {
+    --hrm-primary: #0A6ED1;
+    --hrm-secondary: #16325C;
+    --hrm-success: #107E3E;
+    --hrm-warning: #E9730C;
+    --hrm-danger: #BB0000;
+}
+
+/* ── KPI Stats ── */
+.hrm-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 14px;
+    margin-bottom: 18px;
+}
+.hrm-stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: border-color .2s, transform .2s, box-shadow .2s;
+}
+.hrm-stat-card:hover {
+    border-color: rgba(212, 154, 22, .35);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,.25);
+}
+.hrm-stat-icon {
+    width: 46px; height: 46px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+}
+.hrm-stat-icon.gold { background: rgba(212,154,22,.15); color: var(--hrm-primary); }
+.hrm-stat-icon.blue { background: rgba(63,91,216,.15); color: var(--hrm-secondary); }
+.hrm-stat-icon.green { background: rgba(16,185,129,.15); color: var(--hrm-success); }
+.hrm-stat-icon.orange { background: rgba(245,158,11,.15); color: var(--hrm-warning); }
+.hrm-stat-icon.red { background: rgba(239,68,68,.15); color: var(--hrm-danger); }
+.hrm-stat-icon.purple { background: rgba(139,92,246,.15); color: #8b5cf6; }
+.hrm-stat-value { font-size: 22px; font-weight: 800; line-height: 1.1; }
+.hrm-stat-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+/* ── Toolbar ── */
+.hrm-toolbar {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    justify-content: space-between; margin-bottom: 14px;
+}
+.hrm-toolbar-left, .hrm-toolbar-right {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+}
+.hrm-quick-search {
+    position: relative; min-width: 260px;
+}
+.hrm-quick-search input {
+    padding-right: 36px; width: 100%;
+}
+.hrm-quick-search i {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--text-muted); pointer-events: none;
+}
+.hrm-view-toggle .btn.active {
+    background: var(--hrm-primary); border-color: var(--hrm-primary); color: #fff;
+}
+
+/* ── Enterprise DataGrid ── */
+.hrm-datagrid-wrap { position: relative; }
+.hrm-datagrid-toolbar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,.02);
+}
+.hrm-datagrid-toolbar .col-picker {
+    position: relative;
+}
+.hrm-col-menu {
+    display: none; position: absolute; top: 100%; left: 0; z-index: 100;
+    min-width: 180px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+}
+.hrm-col-menu.open { display: block; }
+.hrm-col-menu label {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+    font-size: 12px; cursor: pointer; border-radius: 6px;
+}
+.hrm-col-menu label:hover { background: rgba(255,255,255,.05); }
+
+table.hrm-datagrid { width: 100%; border-collapse: collapse; table-layout: fixed; }
+table.hrm-datagrid thead th {
+    position: relative; user-select: none; white-space: nowrap;
+    padding: 11px 12px; font-size: 12px; font-weight: 700;
+    color: var(--text-muted); background: rgba(255,255,255,.03);
+    border-bottom: 2px solid var(--border); cursor: pointer;
+}
+table.hrm-datagrid thead th.sort-asc::after { content: ' ▲'; color: var(--hrm-primary); font-size: 10px; }
+table.hrm-datagrid thead th.sort-desc::after { content: ' ▼'; color: var(--hrm-primary); font-size: 10px; }
+table.hrm-datagrid thead th.no-sort { cursor: default; }
+table.hrm-datagrid tbody td {
+    padding: 10px 12px; border-bottom: 1px solid var(--border);
+    font-size: 13px; overflow: hidden; text-overflow: ellipsis;
+}
+table.hrm-datagrid tbody tr:hover { background: rgba(212,154,22,.04); }
+table.hrm-datagrid tbody tr.selected { background: rgba(63,91,216,.08); }
+table.hrm-datagrid .col-resizer {
+    position: absolute; left: 0; top: 0; width: 5px; height: 100%;
+    cursor: col-resize; z-index: 2;
+}
+table.hrm-datagrid .col-hidden { display: none; }
+
+/* ── Employee Cards View ── */
+.hrm-emp-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px; padding: 14px;
+}
+.hrm-emp-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px;
+    transition: border-color .2s, transform .2s;
+    cursor: pointer;
+}
+.hrm-emp-card:hover {
+    border-color: rgba(212,154,22,.4);
+    transform: translateY(-2px);
+}
+.hrm-emp-card-head {
+    display: flex; align-items: center; gap: 14px; margin-bottom: 12px;
+}
+.hrm-emp-avatar {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--hrm-primary), var(--hrm-secondary));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 700; color: #fff; flex-shrink: 0;
+    overflow: hidden;
+}
+.hrm-emp-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.hrm-emp-name { font-weight: 700; font-size: 15px; }
+.hrm-emp-code { font-size: 11px; color: var(--text-muted); }
+.hrm-emp-meta { font-size: 12px; color: var(--text-muted); line-height: 1.8; }
+.hrm-emp-meta i { width: 16px; color: var(--hrm-secondary); }
+
+/* ── Workflow Stepper ── */
+.hrm-workflow {
+    display: flex; align-items: center; gap: 0; flex-wrap: wrap;
+    margin: 8px 0;
+}
+.hrm-wf-step {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--text-muted); padding: 4px 0;
+}
+.hrm-wf-step .dot {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 2px solid var(--border); display: flex;
+    align-items: center; justify-content: center; font-size: 10px;
+}
+.hrm-wf-step.done .dot { background: var(--hrm-success); border-color: var(--hrm-success); color: #fff; }
+.hrm-wf-step.active .dot { background: var(--hrm-primary); border-color: var(--hrm-primary); color: #fff; }
+.hrm-wf-step.rejected .dot { background: var(--hrm-danger); border-color: var(--hrm-danger); color: #fff; }
+.hrm-wf-line { width: 24px; height: 2px; background: var(--border); margin: 0 4px; }
+.hrm-wf-line.done { background: var(--hrm-success); }
+
+/* ── Activity Timeline ── */
+.hrm-timeline { padding: 8px 0; }
+.hrm-timeline-item {
+    display: flex; gap: 12px; padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+.hrm-timeline-item:last-child { border-bottom: none; }
+.hrm-timeline-dot {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 13px;
+}
+.hrm-timeline-body { flex: 1; }
+.hrm-timeline-title { font-size: 13px; font-weight: 600; }
+.hrm-timeline-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* ── Skeleton Loaders ── */
+.hrm-skeleton {
+    background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.08) 50%, rgba(255,255,255,.04) 75%);
+    background-size: 200% 100%; animation: hrmShimmer 1.2s infinite;
+    border-radius: 6px;
+}
+@keyframes hrmShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.hrm-skeleton-row { height: 42px; margin-bottom: 8px; }
+.hrm-skeleton-card { height: 120px; border-radius: var(--radius); }
+
+/* ── Confirm Dialog ── */
+.hrm-confirm-overlay {
+    display: none; position: fixed; inset: 0; z-index: 3000;
+    background: rgba(0,0,0,.7); align-items: center; justify-content: center;
+}
+.hrm-confirm-overlay.open { display: flex; }
+.hrm-confirm-box {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px; max-width: 420px; width: 90%;
+    box-shadow: 0 16px 48px rgba(0,0,0,.5);
+}
+.hrm-confirm-box h4 { margin: 0 0 8px; font-size: 16px; }
+.hrm-confirm-box p { margin: 0 0 18px; color: var(--text-muted); font-size: 13px; }
+.hrm-confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* ── Pagination ── */
+.hrm-pagination {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    justify-content: center; padding: 14px; border-top: 1px solid var(--border);
+}
+.hrm-pagination a, .hrm-pagination span {
+    padding: 6px 12px; border-radius: 6px; font-size: 12px;
+    border: 1px solid var(--border); text-decoration: none; color: var(--text);
+}
+.hrm-pagination a:hover { border-color: var(--hrm-primary); color: var(--hrm-primary); }
+.hrm-pagination .active { background: var(--hrm-primary); border-color: var(--hrm-primary); color: #fff; }
+
+/* ── Bulk bar ── */
+.hrm-bulk-bar {
+    display: none; padding: 10px 14px; background: rgba(63,91,216,.1);
+    border-bottom: 1px solid rgba(63,91,216,.25);
+    align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.hrm-bulk-bar.visible { display: flex; }
+
+@media print {
+    .sidebar, .topbar, .hrm-subnav, .hrm-toolbar, .hrm-datagrid-toolbar, .hrm-bulk-bar { display: none !important; }
+    .content { margin: 0 !important; padding: 0 !important; }
+}
