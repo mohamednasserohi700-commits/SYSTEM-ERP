@@ -1,3 +1,8 @@
+{% macro hrm_assets() %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/hrm.css') }}">
+<script src="{{ url_for('static', filename='js/hrm.js') }}" defer></script>
+{% endmacro %}
+
 {% macro hrm_nav(active='') %}
 <div class="hrm-subnav" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;padding:12px 14px;background:var(--card-bg);border:1px solid var(--border);border-radius:12px;backdrop-filter:blur(12px);">
     <a href="{{ url_for('hrm_dashboard') }}" class="btn btn-xs {{ 'btn-primary' if active=='dashboard' else 'btn-outline' }}"><i class="fas fa-chart-pie"></i> لوحة التحكم</a>
@@ -16,5 +21,34 @@
     <a href="{{ url_for('hrm_documents') }}" class="btn btn-xs {{ 'btn-primary' if active=='documents' else 'btn-outline' }}"><i class="fas fa-folder-open"></i> الوثائق</a>
     <a href="{{ url_for('hrm_payslips') }}" class="btn btn-xs {{ 'btn-primary' if active=='payslips' else 'btn-outline' }}"><i class="fas fa-file-invoice"></i> كشوف المرتبات</a>
     <a href="{{ url_for('hrm_reports') }}" class="btn btn-xs {{ 'btn-primary' if active=='reports' else 'btn-outline' }}"><i class="fas fa-chart-bar"></i> التقارير</a>
+</div>
+{% endmacro %}
+
+{% macro hrm_stat_cards(stats) %}
+<div class="hrm-stats-grid">
+    <div class="hrm-stat-card"><div class="hrm-stat-icon blue"><i class="fas fa-users"></i></div><div><div class="hrm-stat-value">{{ stats.total }}</div><div class="hrm-stat-label">إجمالي الموظفين</div></div></div>
+    <div class="hrm-stat-card"><div class="hrm-stat-icon green"><i class="fas fa-user-check"></i></div><div><div class="hrm-stat-value">{{ stats.active }}</div><div class="hrm-stat-label">الموظفون النشطون</div></div></div>
+    <div class="hrm-stat-card"><div class="hrm-stat-icon orange"><i class="fas fa-umbrella-beach"></i></div><div><div class="hrm-stat-value">{{ stats.on_leave }}</div><div class="hrm-stat-label">في إجازة حالياً</div></div></div>
+    <div class="hrm-stat-card"><div class="hrm-stat-icon gold"><i class="fas fa-user-plus"></i></div><div><div class="hrm-stat-value">{{ stats.new }}</div><div class="hrm-stat-label">موظفون جدد (الشهر)</div></div></div>
+</div>
+{% endmacro %}
+
+{% macro leave_workflow(l) %}
+<div class="hrm-workflow">
+    <div class="hrm-wf-step {% if l.status=='rejected' %}rejected{% elif l.manager_approved %}done{% elif l.status=='pending' %}active{% endif %}">
+        <span class="dot">{% if l.manager_approved %}<i class="fas fa-check"></i>{% else %}1{% endif %}</span> مدير
+    </div>
+    <div class="hrm-wf-line {% if l.manager_approved %}done{% endif %}"></div>
+    <div class="hrm-wf-step {% if l.status=='rejected' %}rejected{% elif l.hr_approved %}done{% elif l.manager_approved %}active{% endif %}">
+        <span class="dot">{% if l.hr_approved %}<i class="fas fa-check"></i>{% else %}2{% endif %}</span> HR
+    </div>
+    <div class="hrm-wf-line {% if l.hr_approved %}done{% endif %}"></div>
+    <div class="hrm-wf-step {% if l.finance_approved %}done{% elif l.hr_approved and l.status!='rejected' %}active{% endif %}">
+        <span class="dot">{% if l.finance_approved %}<i class="fas fa-check"></i>{% else %}3{% endif %}</span> مالية
+    </div>
+    <div class="hrm-wf-line {% if l.finance_approved %}done{% endif %}"></div>
+    <div class="hrm-wf-step {% if l.status=='approved' %}done{% endif %}">
+        <span class="dot">{% if l.status=='approved' %}<i class="fas fa-check"></i>{% else %}4{% endif %}</span> مكتمل
+    </div>
 </div>
 {% endmacro %}

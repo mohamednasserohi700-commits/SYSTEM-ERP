@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% from 'hrm/_macros.html' import hrm_nav, hrm_assets %}
+{% block title %}نشاط الموظف{% endblock %}
+{% block page_title %}سجل نشاط — {{ emp.name }}{% endblock %}
+{% block extra_styles %}{{ hrm_assets() }}{% endblock %}
+{% block content %}
+{{ hrm_nav('employees') }}
+<div style="margin-bottom:14px;">
+<a href="{{ url_for('hrm_employees') }}" class="btn btn-outline btn-sm"><i class="fas fa-arrow-right"></i> العودة للموظفين</a>
+<a href="{{ url_for('hrm_employee_form', id=emp.id) }}" class="btn btn-primary btn-sm"><i class="fas fa-edit"></i> تعديل البيانات</a>
+</div>
+<div class="card">
+<div class="card-header"><div class="card-title"><i class="fas fa-history" style="color:var(--hrm-primary);"></i> Activity Timeline — {{ emp.code }}</div></div>
+<div class="card-body">
+{% if timeline %}
+<div class="hrm-timeline">
+{% for ev in timeline %}
+<div class="hrm-timeline-item">
+<div class="hrm-timeline-dot hrm-stat-icon {{ ev.tone if ev.tone in ['green','blue','gold','red','purple','orange'] else 'blue' }}"><i class="fas {{ ev.icon }}"></i></div>
+<div class="hrm-timeline-body">
+<div class="hrm-timeline-title">{{ ev.title }}</div>
+<div class="hrm-timeline-meta">{{ ev.detail }} — {{ ev.date[:10] if ev.date else '' }}</div>
+</div>
+</div>
+{% endfor %}
+</div>
+{% else %}
+<div class="empty-state"><i class="fas fa-history"></i><h3>لا يوجد نشاط مسجل</h3></div>
+{% endif %}
+</div></div>
+{% endblock %}

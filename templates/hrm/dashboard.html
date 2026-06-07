@@ -1,46 +1,69 @@
 {% extends 'base.html' %}
-{% from 'hrm/_macros.html' import hrm_nav %}
+{% from 'hrm/_macros.html' import hrm_nav, hrm_assets %}
 {% set block_icon = 'fas fa-users-cog' %}
 {% block title %}لوحة الموارد البشرية{% endblock %}
 {% block page_title %}👥 الموارد البشرية — لوحة التحكم{% endblock %}
 {% block extra_styles %}
+{{ hrm_assets() }}
 <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
 {% endblock %}
 {% block content %}
 {{ hrm_nav('dashboard') }}
-<div class="stats-grid">
-    <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-users"></i></div><div><div class="stat-value">{{ stats.total_employees }}</div><div class="stat-label">إجمالي الموظفين</div></div></div>
-    <div class="stat-card"><div class="stat-icon green"><i class="fas fa-user-check"></i></div><div><div class="stat-value">{{ stats.active_employees }}</div><div class="stat-label">الموظفون النشطون</div></div></div>
-    <div class="stat-card"><div class="stat-icon purple"><i class="fas fa-user-plus"></i></div><div><div class="stat-value">{{ stats.new_employees }}</div><div class="stat-label">تعيينات الشهر</div></div></div>
-    <div class="stat-card"><div class="stat-icon gold"><i class="fas fa-umbrella-beach"></i></div><div><div class="stat-value">{{ stats.on_leave }}</div><div class="stat-label">إجازات حالية</div></div></div>
-    <div class="stat-card"><div class="stat-icon green"><i class="fas fa-sign-in-alt"></i></div><div><div class="stat-value">{{ stats.attendance_today.present }}</div><div class="stat-label">حاضر اليوم</div></div></div>
-    <div class="stat-card"><div class="stat-icon red"><i class="fas fa-user-times"></i></div><div><div class="stat-value">{{ stats.attendance_today.absent }}</div><div class="stat-label">غائب اليوم</div></div></div>
+
+<div class="hrm-stats-grid">
+    <div class="hrm-stat-card"><div class="hrm-stat-icon blue"><i class="fas fa-users"></i></div><div><div class="hrm-stat-value">{{ stats.total_employees }}</div><div class="hrm-stat-label">إجمالي الموظفين</div></div></div>
+    <div class="hrm-stat-card"><div class="hrm-stat-icon green"><i class="fas fa-sign-in-alt"></i></div><div><div class="hrm-stat-value">{{ stats.attendance_today.present }}</div><div class="hrm-stat-label">الحضور اليوم</div></div></div>
+    <div class="hrm-stat-card"><div class="hrm-stat-icon red"><i class="fas fa-user-times"></i></div><div><div class="hrm-stat-value">{{ stats.attendance_today.absent }}</div><div class="hrm-stat-label">الغياب اليوم</div></div></div>
+    <div class="hrm-stat-card"><div class="hrm-stat-icon orange"><i class="fas fa-umbrella-beach"></i></div><div><div class="hrm-stat-value">{{ stats.on_leave }}</div><div class="hrm-stat-label">إجمالي الإجازات الحالية</div></div></div>
+    <div class="hrm-stat-card"><div class="hrm-stat-icon gold"><i class="fas fa-money-check-alt"></i></div><div><div class="hrm-stat-value">{{ "{:,.0f}".format(stats.payroll_this_month or 0) }}</div><div class="hrm-stat-label">الرواتب هذا الشهر</div></div></div>
+    <div class="hrm-stat-card"><div class="hrm-stat-icon purple"><i class="fas fa-hand-holding-usd"></i></div><div><div class="hrm-stat-value">{{ stats.open_loans }}</div><div class="hrm-stat-label">السلف المفتوحة ({{ "{:,.0f}".format(stats.open_loans_amount or 0) }})</div></div></div>
 </div>
+
 {% if pending_leaves > 0 %}
-<div class="alert alert-warning"><i class="fas fa-calendar-check"></i> يوجد <strong>{{ pending_leaves }}</strong> طلب إجازة بانتظار الاعتماد <a href="{{ url_for('hrm_leaves', status='pending') }}" class="btn btn-warning btn-sm" style="margin-right:auto;">عرض</a></div>
+<div class="alert alert-warning"><i class="fas fa-calendar-check"></i> يوجد <strong>{{ pending_leaves }}</strong> طلب إجازة بانتظار الاعتماد
+<a href="{{ url_for('hrm_leaves', status='pending') }}" class="btn btn-warning btn-sm" style="margin-right:auto;">عرض الطلبات</a></div>
 {% endif %}
+
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
-    <div class="card"><div class="card-header"><div class="card-title">توزيع الموظفين حسب القسم</div></div><div class="card-body"><div id="chartDept"></div></div></div>
-    <div class="card"><div class="card-header"><div class="card-title">الرواتب الشهرية</div></div><div class="card-body"><div id="chartPayroll"></div></div></div>
+    <div class="card"><div class="card-header"><div class="card-title"><i class="fas fa-chart-pie" style="color:var(--hrm-primary);"></i> توزيع الموظفين حسب القسم</div></div><div class="card-body"><div id="chartDept"></div></div></div>
+    <div class="card"><div class="card-header"><div class="card-title"><i class="fas fa-chart-bar" style="color:var(--hrm-secondary);"></i> الرواتب الشهرية</div></div><div class="card-body"><div id="chartPayroll"></div></div></div>
 </div>
-<div class="card" style="margin-top:18px;"><div class="card-header"><div class="card-title">الحضور — آخر 30 يوم</div></div><div class="card-body"><div id="chartAtt"></div></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;">
+    <div class="card"><div class="card-header"><div class="card-title"><i class="fas fa-chart-area" style="color:var(--hrm-success);"></i> الحضور — آخر 30 يوم</div></div><div class="card-body"><div id="chartAtt"></div></div></div>
+    <div class="card"><div class="card-header"><div class="card-title"><i class="fas fa-percentage" style="color:var(--hrm-warning);"></i> معدل الغياب الشهري</div></div><div class="card-body"><div id="chartAbsence"></div></div></div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function(){
-  var neon = { colors: ['#3b82f6','#8b5cf6','#06b6d4','#22c55e','#f59e0b'] };
+  var brand = { colors: ['#D49A16','#3F5BD8','#10B981','#F59E0B','#EF4444','#8b5cf6'] };
+  var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  var chartTheme = { mode: isDark ? 'dark' : 'light' };
   new ApexCharts(document.querySelector('#chartDept'), {
-    chart:{type:'donut',height:280,background:'transparent'}, theme:{mode:'dark'},
-    series: {{ dept_values | tojson }}, labels: {{ dept_labels | tojson }},
-    ...neon
+    chart:{type:'donut',height:280,background:'transparent',fontFamily:'Cairo,sans-serif'},
+    theme:chartTheme, series: {{ dept_values | tojson }}, labels: {{ dept_labels | tojson }},
+    colors: brand.colors, legend:{position:'bottom',fontSize:'12px'}
   }).render();
   new ApexCharts(document.querySelector('#chartPayroll'), {
-    chart:{type:'bar',height:280,background:'transparent'}, theme:{mode:'dark'},
+    chart:{type:'bar',height:280,background:'transparent',fontFamily:'Cairo,sans-serif'},
+    theme:chartTheme,
     series:[{name:'صافي الرواتب',data:{{ payroll_values | tojson }}}],
-    xaxis:{categories:{{ payroll_labels | tojson }}}, colors:['#8b5cf6']
+    xaxis:{categories:{{ payroll_labels | tojson }}},
+    colors:['#3F5BD8'], plotOptions:{bar:{borderRadius:6}}
   }).render();
   new ApexCharts(document.querySelector('#chartAtt'), {
-    chart:{type:'area',height:300,background:'transparent'}, theme:{mode:'dark'},
+    chart:{type:'area',height:280,background:'transparent',fontFamily:'Cairo,sans-serif'},
+    theme:chartTheme,
     series:[{name:'حاضر',data:{{ att_present | tojson }}},{name:'غائب',data:{{ att_absent | tojson }}}],
-    xaxis:{categories:{{ att_labels | tojson }}}, colors:['#22c55e','#ef4444']
+    xaxis:{categories:{{ att_labels | tojson }}},
+    colors:['#10B981','#EF4444'], stroke:{curve:'smooth',width:2}, fill:{opacity:.15}
+  }).render();
+  new ApexCharts(document.querySelector('#chartAbsence'), {
+    chart:{type:'line',height:280,background:'transparent',fontFamily:'Cairo,sans-serif'},
+    theme:chartTheme,
+    series:[{name:'معدل الغياب %',data:{{ abs_rates | tojson }}}],
+    xaxis:{categories:{{ abs_labels | tojson }}},
+    colors:['#F59E0B'], stroke:{curve:'smooth',width:3},
+    yaxis:{labels:{formatter:function(v){return v+'%'}}}
   }).render();
 });
 </script>

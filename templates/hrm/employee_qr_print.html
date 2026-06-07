@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8">
+<title>بطاقات QR — الموظفون</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root { --gold:#D49A16; --blue:#3F5BD8; }
+* { box-sizing:border-box; }
+body { font-family:'Cairo',sans-serif; margin:0; padding:16px; background:#f0f0f0; }
+.toolbar { text-align:center; margin-bottom:16px; }
+.toolbar button { font-family:inherit; padding:10px 24px; border:none; border-radius:8px;
+  background:var(--gold); color:#fff; font-weight:700; cursor:pointer; margin:0 6px; font-size:14px; }
+.toolbar a { font-family:inherit; padding:10px 24px; border-radius:8px; background:#fff;
+  border:1px solid #ccc; text-decoration:none; color:#333; margin:0 6px; display:inline-block; font-size:14px; }
+.qr-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; }
+.qr-card {
+  background:#fff; border:2px solid var(--gold); border-radius:14px; padding:22px 18px;
+  text-align:center; page-break-inside:avoid; break-inside:avoid;
+  display:flex; flex-direction:column; align-items:center;
+}
+.qr-card .brand { font-size:11px; color:var(--blue); font-weight:700; margin-bottom:12px; }
+.qr-card .qr-box {
+  width:190px; height:190px; display:flex; align-items:center; justify-content:center;
+  border:2px dashed rgba(212,154,22,.35); border-radius:12px; padding:8px; margin-bottom:12px;
+  background:#fafafa;
+}
+.qr-card .qr-box svg { width:170px !important; height:170px !important; }
+.qr-card .qr-box img { width:170px; height:170px; object-fit:contain; }
+.qr-card .name { font-size:17px; font-weight:800; margin:4px 0; color:#111; line-height:1.35; }
+.qr-card .meta { font-size:11px; color:#666; margin-top:4px; line-height:1.7; }
+.qr-card .foot { font-size:10px; color:#999; margin-top:12px; border-top:1px dashed #ddd; padding-top:10px; width:100%; }
+.qr-card .no-qr { color:#c00; font-size:12px; padding:20px; }
+@media print {
+  body { background:#fff; padding:8mm; }
+  .toolbar { display:none !important; }
+  .qr-grid { grid-template-columns:repeat(2,1fr); gap:10mm; }
+  .qr-card { border:2px solid #D49A16; }
+}
+</style>
+</head>
+<body>
+<div class="toolbar">
+<button type="button" onclick="window.print()">🖨 طباعة البطاقات</button>
+{% if not single %}<span style="color:#666;font-size:13px;">{{ employees|length }} بطاقة</span>{% endif %}
+<a href="{{ url_for('hrm_employees') }}">← العودة للموظفين</a>
+</div>
+<div class="qr-grid">
+{% for row in employees %}
+<div class="qr-card">
+<div class="brand">ERP — بطاقة حضور وانصراف</div>
+<div class="qr-box">
+{% if row.qr_svg %}
+{{ row.qr_svg|safe }}
+{% else %}
+<div class="no-qr">تعذّر توليد QR<br>ثبّت: pip install qrcode</div>
+{% endif %}
+</div>
+<div class="name">{{ row.emp.name }}</div>
+<div class="meta">{{ row.dept }}<br>{{ row.position }}</div>
+<div class="foot">امسح رمز QR عند بوابة الحضور</div>
+</div>
+{% endfor %}
+</div>
+</body>
+</html>

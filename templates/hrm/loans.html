@@ -1,12 +1,42 @@
-{% extends 'base.html' %}{% from 'hrm/_macros.html' import hrm_nav %}
-{% block title %}السلف{% endblock %}{% block page_title %}سلف الموظفين{% endblock %}
-{% block content %}{{ hrm_nav('loans') }}
-<div class="card" style="max-width:500px;margin-bottom:14px;"><div class="card-body">
-<form method="POST" action="{{ url_for('hrm_loan_save') }}">
-<div class="form-group"><label>موظف</label><select name="employee_id" class="form-control" required>{% for e in employees %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}</select></div>
-<div class="form-group"><label>المبلغ</label><input type="number" step="0.01" name="amount" class="form-control" required></div>
-<div class="form-group"><label>خصم شهري</label><input type="number" step="0.01" name="monthly_deduction" class="form-control"></div>
-<button class="btn btn-primary btn-sm">تسجيل + قيد محاسبي</button></form></div></div>
-<div class="card"><table><thead><tr><th>موظف</th><th>المبلغ</th><th>متبقي</th><th>خصم شهري</th><th>الحالة</th></tr></thead>
-<tbody>{% for l in loans %}<tr><td>{{ l.employee.name if l.employee else '' }}</td><td>{{ l.amount }}</td><td>{{ l.remaining }}</td><td>{{ l.monthly_deduction }}</td><td>{{ l.status }}</td></tr>{% endfor %}</tbody></table></div>
+{% extends 'base.html' %}
+{% from 'hrm/_macros.html' import hrm_nav, hrm_assets %}
+{% block title %}السلف{% endblock %}
+{% block page_title %}سلف الموظفين{% endblock %}
+{% block extra_styles %}{{ hrm_assets() }}{% endblock %}
+{% block content %}
+{{ hrm_nav('loans') }}
+
+<div class="card" style="max-width:520px;margin-bottom:14px;">
+<div class="card-header"><div class="card-title"><i class="fas fa-plus"></i> تسجيل سلفة</div></div>
+<div class="card-body">
+<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;"><i class="fas fa-link"></i> عند الاعتماد: حركة مالية تلقائية (سلف موظف ← صندوق) + خصم شهري من الرواتب</p>
+<form method="POST" action="{{ url_for('hrm_loan_save') }}" data-hrm-confirm data-confirm-title="تسجيل سلفة" data-confirm-msg="تسجيل السلفة وإنشاء القيد المحاسبي؟" data-confirm-danger="0">
+<div class="form-group"><label class="form-label">موظف</label><select name="employee_id" class="form-control" required>{% for e in employees %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}</select></div>
+<div class="form-group"><label class="form-label">المبلغ</label><input type="number" step="0.01" name="amount" class="form-control" required></div>
+<div class="form-group"><label class="form-label">خصم شهري</label><input type="number" step="0.01" name="monthly_deduction" class="form-control"></div>
+<button class="btn btn-primary btn-sm"><i class="fas fa-check"></i> تسجيل + قيد محاسبي</button>
+</form></div></div>
+
+<div class="card hrm-datagrid-wrap" data-print-title="سلف الموظفين">
+<div class="hrm-datagrid-toolbar">
+<button type="button" class="btn btn-outline btn-xs" data-export="excel"><i class="fas fa-file-excel"></i> Excel</button>
+<button type="button" class="btn btn-outline btn-xs" data-export="pdf"><i class="fas fa-file-pdf"></i> PDF</button>
+</div>
+<div class="table-container">
+<table class="hrm-datagrid">
+<thead><tr><th>موظف</th><th>المبلغ</th><th>متبقي</th><th>خصم شهري</th><th>الحالة</th><th>قيد محاسبي</th></tr></thead>
+<tbody>
+{% for l in loans %}
+<tr>
+<td style="font-weight:600;">{{ l.employee.name if l.employee else '' }}</td>
+<td style="color:var(--hrm-primary);font-weight:700;">{{ "{:,.2f}".format(l.amount or 0) }}</td>
+<td style="color:var(--hrm-warning);">{{ "{:,.2f}".format(l.remaining or 0) }}</td>
+<td>{{ "{:,.2f}".format(l.monthly_deduction or 0) }}</td>
+<td><span class="badge {{ 'badge-success' if l.status=='closed' else 'badge-warning' }}">{{ l.status }}</span></td>
+<td>{% if l.journal_id %}<span class="badge badge-info"><i class="fas fa-check"></i> #{{ l.journal_id }}</span>{% else %}—{% endif %}</td>
+</tr>
+{% else %}
+<tr><td colspan="6"><div class="empty-state"><i class="fas fa-hand-holding-usd"></i><h3>لا توجد سلف</h3></div></td></tr>
+{% endfor %}
+</tbody></table></div></div>
 {% endblock %}

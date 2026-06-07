@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% from 'hrm/_macros.html' import hrm_nav, hrm_assets %}
+{% block title %}إعدادات أجهزة الحضور{% endblock %}
+{% block page_title %}ربط البصمة والأجهزة{% endblock %}
+{% block extra_styles %}{{ hrm_assets() }}{% endblock %}
+{% block content %}
+{{ hrm_nav('attendance') }}
+
+<div class="card" style="margin-bottom:16px;border-color:rgba(212,154,22,.35);">
+<div class="card-header"><div class="card-title"><i class="fas fa-fingerprint" style="color:var(--hrm-primary);"></i> مفتاح API للأجهزة</div></div>
+<div class="card-body">
+<p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+عند مسح البصمة، يرسل الجهاز طلباً تلقائياً للنظام — <strong>بدون تدخل يدوي</strong>.
+يجب تعيين <strong>رقم البصمة</strong> لكل موظف في ملفه، ومفتاح API في الجهاز.
+</p>
+<form method="POST" class="form-grid-2" style="max-width:720px;">
+<div class="form-group" style="grid-column:1/-1;">
+<label class="form-label">مفتاح API (X-HRM-Key)</label>
+<input name="api_key" class="form-control" value="{{ api_key }}" placeholder="اضغط «توليد» أو الصق مفتاح الجهاز" dir="ltr" style="font-family:monospace;">
+</div>
+<button type="submit" name="action" value="save" class="btn btn-primary"><i class="fas fa-save"></i> حفظ</button>
+<button type="submit" name="action" value="generate_key" class="btn btn-outline"><i class="fas fa-sync"></i> توليد مفتاح جديد</button>
+</form>
+</div></div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+<div class="card">
+<div class="card-header"><div class="card-title">API البصمة</div></div>
+<div class="card-body" style="font-size:12px;">
+<code style="display:block;background:rgba(0,0,0,.2);padding:12px;border-radius:8px;direction:ltr;word-break:break-all;">POST {{ biometric_url }}</code>
+<pre style="margin-top:12px;font-size:11px;color:var(--text-muted);white-space:pre-wrap;">Headers:
+  Content-Type: application/json
+  X-HRM-Key: YOUR_API_KEY
+
+Body:
+{
+  "biometric_id": "12345",
+  "device_id": "ZKT-001"
+}</pre>
+<p style="margin-top:10px;color:var(--hrm-success);"><i class="fas fa-check"></i> يُسجّل حضور/انصراف تلقائياً</p>
+</div></div>
+<div class="card">
+<div class="card-header"><div class="card-title">API — QR / كود</div></div>
+<div class="card-body" style="font-size:12px;">
+<code style="display:block;background:rgba(0,0,0,.2);padding:12px;border-radius:8px;direction:ltr;word-break:break-all;">POST {{ punch_url }}</code>
+<pre style="margin-top:12px;font-size:11px;color:var(--text-muted);white-space:pre-wrap;">Body:
+{
+  "scan": "ERP-HRM|E001|1",
+  "device_id": "GATE-01"
+}</pre>
+</div></div>
+</div>
+
+<div style="margin-top:16px;">
+<a href="{{ url_for('hrm_attendance_kiosk') }}" class="btn btn-primary"><i class="fas fa-tv"></i> شاشة المراقبة الحية</a>
+<a href="{{ url_for('hrm_attendance_qr') }}" class="btn btn-outline"><i class="fas fa-qrcode"></i> بوابة QR</a>
+<a href="{{ url_for('hrm_employees_qr_bulk') }}" class="btn btn-outline"><i class="fas fa-print"></i> طباعة QR للموظفين</a>
+</div>
+{% endblock %}

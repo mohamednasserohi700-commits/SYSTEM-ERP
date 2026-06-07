@@ -1,13 +1,72 @@
-{% extends 'base.html' %}{% from 'hrm/_macros.html' import hrm_nav %}
-{% block title %}حضور QR{% endblock %}{% block page_title %}تسجيل حضور QR{% endblock %}
-{% block content %}{{ hrm_nav('attendance') }}
-<div class="card" style="max-width:480px;margin:0 auto;text-align:center;">
-<div class="card-body" style="padding:32px;">
-<i class="fas fa-qrcode" style="font-size:64px;color:var(--accent);margin-bottom:20px;"></i>
-<form method="POST">
-<div class="form-group"><label>كود الموظف أو امسح QR</label>
-<input name="employee_code" class="form-control" style="font-size:22px;text-align:center;" autofocus required></div>
+{% extends 'base.html' %}
+{% from 'hrm/_macros.html' import hrm_nav, hrm_assets %}
+{% block title %}بوابة QR{% endblock %}
+{% block page_title %}تسجيل حضور — QR / كود{% endblock %}
+{% block extra_styles %}
+{{ hrm_assets() }}
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+{% endblock %}
+{% block content %}
+{{ hrm_nav('attendance') }}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:960px;margin:0 auto;">
+<div class="card">
+<div class="card-header"><div class="card-title"><i class="fas fa-camera" style="color:var(--hrm-secondary);"></i> مسح QR</div></div>
+<div class="card-body" style="padding:16px;">
+<div id="qrReader" style="border-radius:12px;overflow:hidden;"></div>
+<div id="scanResult" style="margin-top:12px;text-align:center;font-size:14px;min-height:24px;"></div>
+</div></div>
+
+<div class="card">
+<div class="card-header"><div class="card-title"><i class="fas fa-keyboard" style="color:var(--hrm-primary);"></i> إدخال يدوي</div></div>
+<div class="card-body" style="padding:24px;text-align:center;">
+<form method="POST" id="manualForm">
+<input name="employee_code" id="empCodeInput" class="form-control" style="font-size:22px;text-align:center;margin-bottom:14px;" placeholder="كود الموظف" autofocus>
 <button class="btn btn-primary" style="width:100%;padding:14px;"><i class="fas fa-fingerprint"></i> تسجيل</button>
 </form>
-<p style="margin-top:16px;color:var(--text-muted);font-size:12px;">API البصمة: POST /api/hrm/biometric</p>
-</div></div>{% endblock %}
+<p style="margin-top:16px;font-size:12px;color:var(--text-muted);">أول مسح = حضور · ثاني مسح = انصراف</p>
+<a href="{{ url_for('hrm_employees_qr_bulk') }}" class="btn btn-outline btn-sm" style="margin-top:10px;"><i class="fas fa-print"></i> طباعة بطاقات QR</a>
+</div></div>
+</div>
+
+<script>
+(function(){
+  var resultEl=document.getElementById('scanResult');
+  var lastScan=0;
+  function showResult(msg, ok){
+    resultEl.innerHTML=msg;
+    resultEl.style.color=ok?'var(--hrm-success)':'var(--hrm-danger)';
+    if(typeof showToast==='function') showToast(msg.replace(/<[^>]+>/g,''), ok?'success':'error');
+  }
+  async function punchScan(text){
+    var now=Date.now();
+    if(now-lastScan<2500) return;
+    lastScan=now;
+    try{
+      var r=await fetch('/api/hrm/attendance/punch',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({scan:text,source:'qr'})
+      });
+      var d=await r.json();
+      if(d.ok){
+        showResult('<i class="fas fa-check-circle"></i> '+d.message+' — '+d.time,true);
+      }else{
+        showResult('<i class="fas fa-times-circle"></i> '+(d.message||'خطأ'),false);
+      }
+    }catch(e){ showResult('خطأ في الاتصال',false); }
+  }
+  if(typeof Html5Qrcode!=='undefined'){
+    var scanner=new Html5Qrcode('qrReader');
+    scanner.start(
+      {facingMode:'environment'},
+      {fps:8,qrbox:{width:220,height:220}},
+      function(decoded){ punchScan(decoded); },
+      function(){}
+    ).catch(function(){
+      document.getElementById('qrReader').innerHTML='<p style="padding:20px;color:var(--text-muted);">الكamera غير متاحة — استخدم الإدخال اليدوي</p>';
+    });
+  }
+})();
+</script>
+{% endblock %}

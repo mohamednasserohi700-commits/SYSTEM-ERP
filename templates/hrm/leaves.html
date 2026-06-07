@@ -1,23 +1,62 @@
-{% extends 'base.html' %}{% from 'hrm/_macros.html' import hrm_nav %}
-{% block title %}الإجازات{% endblock %}{% block page_title %}طلبات الإجازات{% endblock %}
-{% block content %}{{ hrm_nav('leaves') }}
-<div class="card" style="margin-bottom:14px;"><div class="card-body">
+{% extends 'base.html' %}
+{% from 'hrm/_macros.html' import hrm_nav, hrm_assets, leave_workflow %}
+{% block title %}الإجازات{% endblock %}
+{% block page_title %}طلبات الإجازات{% endblock %}
+{% block extra_styles %}{{ hrm_assets() }}{% endblock %}
+{% block content %}
+{{ hrm_nav('leaves') }}
+
+<div class="card" style="margin-bottom:14px;">
+<div class="card-header"><div class="card-title"><i class="fas fa-plus-circle"></i> طلب إجازة جديد</div></div>
+<div class="card-body">
 <form method="POST" action="{{ url_for('hrm_leave_new') }}" class="form-grid-2">
-<div class="form-group"><label>الموظف</label><select name="employee_id" class="form-control" required>{% for e in employees %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}</select></div>
-<div class="form-group"><label>نوع الإجازة</label><select name="leave_type_id" class="form-control" required>{% for t in leave_types %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
-<div class="form-group"><label>من</label><input type="date" name="date_from" class="form-control" required></div>
-<div class="form-group"><label>إلى</label><input type="date" name="date_to" class="form-control" required></div>
-<div class="form-group" style="grid-column:1/-1;"><label>السبب</label><textarea name="reason" class="form-control"></textarea></div>
-<button class="btn btn-primary btn-sm">إرسال الطلب</button></form></div></div>
-<div class="card"><table><thead><tr><th>موظف</th><th>نوع</th><th>الفترة</th><th>أيام</th><th>الحالة</th><th>مدير</th><th>HR</th><th></th></tr></thead>
-<tbody>{% for l in leaves %}
-<tr><td>{{ l.employee.name if l.employee else '' }}</td><td>{{ l.leave_type.name if l.leave_type else '' }}</td>
-<td>{{ l.date_from }} — {{ l.date_to }}</td><td>{{ l.days_count }}</td>
-<td><span class="badge {% if l.status=='approved' %}badge-success{% elif l.status=='rejected' %}badge-danger{% else %}badge-warning{% endif %}">{{ l.status }}</span></td>
-<td>{% if l.manager_approved %}<i class="fas fa-check text-success"></i>{% else %}—{% endif %}</td>
-<td>{% if l.hr_approved %}<i class="fas fa-check text-success"></i>{% else %}—{% endif %}</td>
-<td>{% if l.status=='pending' %}
-<form method="POST" action="{{ url_for('hrm_leave_approve', id=l.id) }}" style="display:inline"><input type="hidden" name="step" value="manager"><button class="btn btn-success btn-xs">مدير</button></form>
-<form method="POST" action="{{ url_for('hrm_leave_approve', id=l.id) }}" style="display:inline"><input type="hidden" name="step" value="hr"><button class="btn btn-primary btn-xs">HR</button></form>
-<form method="POST" action="{{ url_for('hrm_leave_reject', id=l.id) }}" style="display:inline"><button class="btn btn-danger btn-xs">رفض</button></form>
-{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% endblock %}
+<div class="form-group"><label class="form-label">الموظف</label><select name="employee_id" class="form-control" required>{% for e in employees %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}</select></div>
+<div class="form-group"><label class="form-label">نوع الإجازة</label><select name="leave_type_id" class="form-control" required>{% for t in leave_types %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
+<div class="form-group"><label class="form-label">من</label><input type="date" name="date_from" class="form-control" required></div>
+<div class="form-group"><label class="form-label">إلى</label><input type="date" name="date_to" class="form-control" required></div>
+<div class="form-group" style="grid-column:1/-1;"><label class="form-label">السبب</label><textarea name="reason" class="form-control" rows="2"></textarea></div>
+<button class="btn btn-primary btn-sm"><i class="fas fa-paper-plane"></i> إرسال الطلب</button>
+</form></div></div>
+
+<div class="card hrm-datagrid-wrap">
+<div class="hrm-datagrid-toolbar">
+    <span style="font-size:12px;color:var(--text-muted);"><i class="fas fa-project-diagram"></i> سير العمل: موظف → مدير → HR → مالية → مكتمل</span>
+</div>
+<div class="table-container">
+<table class="hrm-datagrid">
+<thead><tr><th>موظف</th><th>نوع</th><th>الفترة</th><th>أيام</th><th>سير العمل</th><th>الحالة</th><th class="no-sort">إجراءات</th></tr></thead>
+<tbody>
+{% for l in leaves %}
+<tr>
+<td style="font-weight:600;">{{ l.employee.name if l.employee else '' }}</td>
+<td>{{ l.leave_type.name if l.leave_type else '' }}</td>
+<td>{{ l.date_from }} — {{ l.date_to }}</td>
+<td>{{ l.days_count }}</td>
+<td>{{ leave_workflow(l) }}</td>
+<td>
+{% if l.status=='approved' %}<span class="badge badge-success">مكتمل</span>
+{% elif l.status=='rejected' %}<span class="badge badge-danger">مرفوض</span>
+{% else %}<span class="badge badge-warning">قيد المراجعة</span>{% endif %}
+</td>
+<td style="white-space:nowrap;">
+{% if l.status=='pending' %}
+{% if not l.manager_approved %}
+<form method="POST" action="{{ url_for('hrm_leave_approve', id=l.id) }}" style="display:inline" data-hrm-confirm data-confirm-title="اعتماد مدير" data-confirm-msg="اعتماد طلب الإجازة كمدير؟" data-confirm-danger="0">
+<input type="hidden" name="step" value="manager"><button class="btn btn-success btn-xs">مدير</button></form>
+{% elif not l.hr_approved %}
+<form method="POST" action="{{ url_for('hrm_leave_approve', id=l.id) }}" style="display:inline" data-hrm-confirm data-confirm-title="اعتماد HR" data-confirm-msg="اعتماد طلب الإجازة من HR؟" data-confirm-danger="0">
+<input type="hidden" name="step" value="hr"><button class="btn btn-primary btn-xs">HR</button></form>
+{% elif not l.finance_approved %}
+<form method="POST" action="{{ url_for('hrm_leave_approve', id=l.id) }}" style="display:inline" data-hrm-confirm data-confirm-title="اعتماد مالي" data-confirm-msg="اعتماد طلب الإجازة من المالية؟" data-confirm-danger="0">
+<input type="hidden" name="step" value="finance"><button class="btn btn-warning btn-xs">مالية</button></form>
+{% endif %}
+<form method="POST" action="{{ url_for('hrm_leave_reject', id=l.id) }}" style="display:inline" data-hrm-confirm data-confirm-title="رفض الطلب" data-confirm-msg="رفض طلب الإجازة؟">
+<button class="btn btn-danger btn-xs">رفض</button></form>
+{% else %}—{% endif %}
+</td>
+</tr>
+{% else %}
+<tr><td colspan="7"><div class="empty-state"><i class="fas fa-calendar-alt"></i><h3>لا توجد طلبات إجازة</h3></div></td></tr>
+{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

@@ -31,6 +31,9 @@
         <select name="branch_id" class="form-control"><option value="">—</option>
         {% for b in branches %}<option value="{{ b.id }}" {% if emp and emp.branch_id==b.id %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
         </select></div>
+    <div class="form-group"><label class="form-label"><i class="fas fa-fingerprint"></i> رقم البصمة (جهاز البصمة)</label>
+        <input name="biometric_id" class="form-control" value="{{ emp.biometric_id if emp and emp.biometric_id else '' }}" placeholder="مثال: 1001 — كما في جهاز ZKTeco" dir="ltr">
+        <small style="color:var(--text-muted);font-size:11px;">يُستخدم للتسجيل التلقائي عند مسح البصمة</small></div>
     <div class="form-group"><label class="form-label">تاريخ التعيين</label><input type="date" name="hire_date" class="form-control" value="{{ emp.hire_date.isoformat() if emp and emp.hire_date else '' }}"></div>
     <div class="form-group"><label class="form-label">الراتب الأساسي</label><input type="number" step="0.01" name="salary" class="form-control" value="{{ emp.salary if emp else 0 }}"></div>
     <div class="form-group"><label class="form-label">بدلات</label><input type="number" step="0.01" name="allowances" class="form-control" value="{{ emp.allowances if emp else 0 }}"></div>
@@ -46,8 +49,11 @@
         </select></div>
     <div class="form-group"><label class="form-label">مسمى وظيفي (نص)</label><input name="position" class="form-control" value="{{ emp.position if emp else '' }}"></div>
 </div>
-<div style="display:flex;gap:10px;margin-top:14px;">
+<div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
     <button class="btn btn-primary"><i class="fas fa-save"></i> حفظ</button>
+    {% if emp %}
+    <a href="{{ url_for('hrm_employee_qr', id=emp.id) }}" class="btn btn-outline" target="_blank"><i class="fas fa-qrcode"></i> طباعة QR</a>
+    {% endif %}
     <a href="{{ url_for('hrm_employees') }}" class="btn btn-outline">إلغاء</a>
 </div>
 </form></div></div>

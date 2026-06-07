@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% from 'hrm/_macros.html' import hrm_nav, hrm_assets %}
+{% block title %}شاشة الحضور{% endblock %}
+{% block page_title %}مراقبة الحضور — مباشر{% endblock %}
+{% block extra_styles %}{{ hrm_assets() }}{% endblock %}
+{% block content %}
+{{ hrm_nav('attendance') }}
+<div class="card">
+<div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+<div class="card-title"><i class="fas fa-broadcast-tower" style="color:var(--hrm-success);"></i> آخر التسجيلات <span id="liveDot" style="display:inline-block;width:8px;height:8px;background:var(--hrm-success);border-radius:50%;margin-right:6px;animation:pulse 1.5s infinite;"></span></div>
+<small style="color:var(--text-muted);" id="lastRefresh">—</small>
+</div>
+<div class="table-container"><table class="hrm-datagrid">
+<thead><tr><th>الوقت</th><th>الموظف</th><th>الكود</th><th>العملية</th><th>المصدر</th><th>الجهاز</th></tr></thead>
+<tbody id="kioskBody"><tr><td colspan="6" class="empty-state"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</td></tr></tbody>
+</table></div></div>
+<style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}</style>
+<script>
+(function(){
+  function srcLabel(s){
+    return {biometric:'بصمة',qr:'QR',api:'API',manual:'يدوي'}[s]||s;
+  }
+  async function refresh(){
+    try{
+      var r=await fetch('/api/hrm/attendance/recent');
+      var d=await r.json();
+      var tb=document.getElementById('kioskBody');
+      if(!d.items||!d.items.length){
+        tb.innerHTML='<tr><td colspan="6"><div class="empty-state"><i class="fas fa-clock"></i><h3>لا توجد تسجيلات بعد</h3></div></td></tr>';
+      }else{
+        tb.innerHTML=d.items.map(function(x){
+          var cls=x.action==='check_in'?'badge-success':'badge-info';
+          return '<tr><td>'+x.time+'</td><td style="font-weight:700;">'+x.employee+'</td><td>'+x.code+'</td><td><span class="badge '+cls+'">'+x.action_label+'</span></td><td>'+srcLabel(x.source)+'</td><td>'+(x.device_id||'—')+'</td></tr>';
+        }).join('');
+      }
+      document.getElementById('lastRefresh').textContent='تحديث '+new Date().toLocaleTimeString('ar-EG');
+    }catch(e){}
+  }
+  refresh();
+  setInterval(refresh,4000);
+})();
+</script>
+{% endblock %}

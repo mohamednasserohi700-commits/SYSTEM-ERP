@@ -1,48 +1,183 @@
 {% extends 'base.html' %}
-{% from 'hrm/_macros.html' import hrm_nav %}
+{% from 'hrm/_macros.html' import hrm_nav, hrm_assets, hrm_stat_cards %}
 {% set block_icon = 'fas fa-id-badge' %}
 {% block title %}موظفو HR{% endblock %}
 {% block page_title %}إدارة الموظفين{% endblock %}
+{% block extra_styles %}{{ hrm_assets() }}{% endblock %}
 {% block topbar_actions %}
-<a href="{{ url_for('hrm_employee_form') }}" class="btn btn-primary"><i class="fas fa-plus"></i> إضافة</a>
-<a href="{{ url_for('hrm_employees_export') }}" class="btn btn-outline"><i class="fas fa-file-excel"></i> Excel</a>
+<a href="{{ url_for('hrm_employee_form') }}" class="btn btn-primary"><i class="fas fa-plus"></i> إضافة موظف</a>
+<a href="{{ url_for('hrm_employees_qr_bulk') }}" class="btn btn-outline" target="_blank"><i class="fas fa-qrcode"></i> طباعة QR</a>
 {% endblock %}
 {% block content %}
 {{ hrm_nav('employees') }}
-<div class="card" style="margin-bottom:14px;"><div class="card-body" style="padding:14px;">
-<form method="GET" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;">
-    <div class="form-group" style="margin:0;"><label class="form-label">بحث</label><input name="q" class="form-control" value="{{ search }}" placeholder="اسم، كود، هاتف..."></div>
-    <div class="form-group" style="margin:0;"><label class="form-label">القسم</label>
-        <select name="department_id" class="form-control"><option value="">الكل</option>
-        {% for d in departments %}<option value="{{ d.id }}" {% if dept_id==d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
-        </select></div>
-    <div class="form-group" style="margin:0;"><label class="form-label">الحالة</label>
-        <select name="status" class="form-control"><option value="">الكل</option>
-        <option value="active" {% if status=='active' %}selected{% endif %}>نشط</option>
-        <option value="inactive" {% if status=='inactive' %}selected{% endif %}>غير نشط</option></select></div>
-    <button class="btn btn-primary btn-sm"><i class="fas fa-search"></i></button>
-</form></div></div>
-<div class="card"><div class="table-container"><table>
-<thead><tr><th>الكود</th><th>الاسم</th><th>القسم</th><th>الوظيفة</th><th>الهاتف</th><th>الراتب</th><th>الحالة</th><th></th></tr></thead>
-<tbody>
-{% for e in employees %}
-<tr>
-    <td>{{ e.code }}</td>
-    <td style="font-weight:600;">{% if e.photo %}<img src="{{ url_for('static', filename='../instance/' + e.photo) if False else '#' }}" style="display:none">{% endif %}{{ e.name }}</td>
-    <td>{{ e.department or '—' }}</td>
-    <td>{{ e.position or '—' }}</td>
-    <td>{{ e.phone or '—' }}</td>
-    <td style="color:var(--success);font-weight:700;">{{ "{:,.2f}".format(e.salary or 0) }}</td>
-    <td><span class="badge {{ 'badge-success' if e.is_active else 'badge-danger' }}">{{ e.employment_status or ('نشط' if e.is_active else 'غير نشط') }}</span></td>
-    <td style="white-space:nowrap;">
-        <a href="{{ url_for('hrm_employee_form', id=e.id) }}" class="btn btn-outline btn-xs"><i class="fas fa-edit"></i></a>
-        {% if can('record_delete') %}
-        <form method="POST" action="{{ url_for('hrm_employee_delete', id=e.id) }}" style="display:inline" onsubmit="return confirm('حذف الموظف نهائياً؟ لا يمكن التراجع.')">
-            <button class="btn btn-danger btn-xs"><i class="fas fa-trash"></i></button></form>
+
+{{ hrm_stat_cards(emp_stats) }}
+
+<div class="hrm-toolbar">
+    <div class="hrm-toolbar-left">
+        <form method="GET" id="empFilterForm" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;">
+            <div class="hrm-quick-search form-group" style="margin:0;">
+                <input name="q" class="form-control" value="{{ search }}" placeholder="بحث فوري: اسم، كود، هاتف، قسم..." autocomplete="off">
+                <i class="fas fa-search"></i>
+            </div>
+            <div class="form-group" style="margin:0;">
+                <select name="department_id" class="form-control" onchange="this.form.submit()">
+                    <option value="">كل الأقسام</option>
+                    {% for d in departments %}
+                    <option value="{{ d.id }}" {% if dept_id==d.id %}selected{% endif %}>{{ d.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="margin:0;">
+                <select name="status" class="form-control" onchange="this.form.submit()">
+                    <option value="">كل الحالات</option>
+                    <option value="active" {% if status=='active' %}selected{% endif %}>نشط</option>
+                    <option value="inactive" {% if status=='inactive' %}selected{% endif %}>غير نشط</option>
+                    <option value="on_leave" {% if status=='on_leave' %}selected{% endif %}>في إجازة</option>
+                </select>
+            </div>
+            <input type="hidden" name="sort" value="{{ sort }}">
+            <input type="hidden" name="order" value="{{ order }}">
+        </form>
+    </div>
+    <div class="hrm-toolbar-right hrm-view-toggle">
+        <button type="button" class="btn btn-outline btn-xs active" data-hrm-view="table"><i class="fas fa-table"></i> جدول</button>
+        <button type="button" class="btn btn-outline btn-xs" data-hrm-view="cards"><i class="fas fa-th-large"></i> بطاقات</button>
+    </div>
+</div>
+
+<div id="hrmTableView">
+<div class="card hrm-datagrid-wrap"
+     data-export-url="{{ url_for('hrm_employees_export') }}"
+     data-pdf-url="{{ url_for('hrm_employees_export_pdf') }}"
+     data-filename="employees.csv"
+     data-print-title="قائمة الموظفين">
+    <div class="hrm-bulk-bar">
+        <span><strong class="hrm-bulk-count">0</strong> محدد</span>
+        <button type="button" class="btn btn-warning btn-xs" onclick="hrmBulkAction(document.getElementById('bulkForm'),'deactivate')"><i class="fas fa-user-slash"></i> إيقاف</button>
+        <button type="button" class="btn btn-success btn-xs" onclick="hrmBulkAction(document.getElementById('bulkForm'),'activate')"><i class="fas fa-user-check"></i> تفعيل</button>
+    </div>
+    <div class="hrm-datagrid-toolbar">
+        <input type="text" class="form-control hrm-client-filter" placeholder="تصفية سريعة في الصفحة..." style="max-width:200px;font-size:12px;">
+        <div class="col-picker" style="position:relative;">
+            <button type="button" class="btn btn-outline btn-xs" data-col-picker><i class="fas fa-columns"></i> الأعمدة</button>
+            <div class="hrm-col-menu">
+                <label><input type="checkbox" data-col="1" checked> الكود</label>
+                <label><input type="checkbox" data-col="2" checked> الاسم</label>
+                <label><input type="checkbox" data-col="3" checked> القسم</label>
+                <label><input type="checkbox" data-col="4" checked> الوظيفة</label>
+                <label><input type="checkbox" data-col="5" checked> الهاتف</label>
+                <label><input type="checkbox" data-col="6" checked> الراتب</label>
+                <label><input type="checkbox" data-col="7" checked> الحالة</label>
+            </div>
+        </div>
+        <button type="button" class="btn btn-outline btn-xs" data-export="excel"><i class="fas fa-file-excel"></i> Excel</button>
+        <button type="button" class="btn btn-outline btn-xs" data-export="pdf"><i class="fas fa-file-pdf"></i> PDF</button>
+    </div>
+    <div class="table-container">
+        <table class="hrm-datagrid">
+            <thead>
+                <tr>
+                    <th class="no-sort" style="width:36px;"><input type="checkbox" class="hrm-select-all"></th>
+                    <th>الكود</th>
+                    <th>الاسم</th>
+                    <th>القسم</th>
+                    <th>الوظيفة</th>
+                    <th>الهاتف</th>
+                    <th>الراتب</th>
+                    <th>الحالة</th>
+                    <th class="no-sort" style="width:120px;">إجراءات</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in employees %}
+            {% set e = row.emp %}
+            <tr data-href="{{ url_for('hrm_employee_form', id=e.id) }}">
+                <td class="no-sort" onclick="event.stopPropagation();"><input type="checkbox" class="hrm-row-select" value="{{ e.id }}"></td>
+                <td><span style="color:var(--hrm-secondary);font-weight:700;">{{ e.code }}</span></td>
+                <td>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <div class="hrm-emp-avatar" style="width:32px;height:32px;font-size:12px;">
+                            {% if e.photo %}
+                            <img src="{{ photo_url(e.photo) }}" alt="">
+                            {% else %}
+                            {{ e.name[:1] }}
+                            {% endif %}
+                        </div>
+                        <span style="font-weight:600;">{{ e.name }}</span>
+                    </div>
+                </td>
+                <td>{{ row.dept }}</td>
+                <td>{{ row.position }}</td>
+                <td>{{ e.phone or '—' }}</td>
+                <td style="color:var(--hrm-success);font-weight:700;">{{ "{:,.2f}".format(e.salary or 0) }}</td>
+                <td>
+                    <span class="badge {{ 'badge-success' if e.is_active else 'badge-danger' }}">{{ row.status_label }}</span>
+                </td>
+                <td style="white-space:nowrap;" onclick="event.stopPropagation();">
+                    <a href="{{ url_for('hrm_employee_qr', id=e.id) }}" class="btn btn-outline btn-xs" title="QR" target="_blank"><i class="fas fa-qrcode"></i></a>
+                    <a href="{{ url_for('hrm_employee_activity', id=e.id) }}" class="btn btn-outline btn-xs" title="النشاط"><i class="fas fa-history"></i></a>
+                    <a href="{{ url_for('hrm_employee_form', id=e.id) }}" class="btn btn-outline btn-xs"><i class="fas fa-edit"></i></a>
+                    {% if can('record_delete') %}
+                    <form method="POST" action="{{ url_for('hrm_employee_delete', id=e.id) }}" style="display:inline"
+                          data-hrm-confirm data-confirm-title="حذف موظف" data-confirm-msg="حذف الموظف نهائياً؟ لا يمكن التراجع." data-confirm-danger="1">
+                        <button type="submit" class="btn btn-danger btn-xs"><i class="fas fa-trash"></i></button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9">
+                <div class="empty-state"><i class="fas fa-users"></i><h3>لا يوجد موظفون</h3>
+                <p>ابدأ بإضافة موظف جديد أو غيّر معايير البحث</p>
+                <a href="{{ url_for('hrm_employee_form') }}" class="btn btn-primary btn-sm" style="margin-top:12px;"><i class="fas fa-plus"></i> إضافة موظف</a>
+                </div>
+            </td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if pagination and pagination.pages > 1 %}
+    <div class="hrm-pagination">
+        {% if pagination.has_prev %}
+        <a href="{{ url_for('hrm_employees', page=pagination.prev_num, q=search, department_id=dept_id or '', status=status or '', sort=sort, order=order) }}"><i class="fas fa-chevron-right"></i> السابق</a>
         {% endif %}
-    </td>
-</tr>
-{% else %}<tr><td colspan="8"><div class="empty-state"><i class="fas fa-users"></i><h3>لا يوجد موظفون</h3></div></td></tr>
+        <span class="active">{{ pagination.page }} / {{ pagination.pages }}</span>
+        {% if pagination.has_next %}
+        <a href="{{ url_for('hrm_employees', page=pagination.next_num, q=search, department_id=dept_id or '', status=status or '', sort=sort, order=order) }}">التالي <i class="fas fa-chevron-left"></i></a>
+        {% endif %}
+        <span style="font-size:11px;color:var(--text-muted);">{{ pagination.total }} موظف</span>
+    </div>
+    {% endif %}
+</div>
+<form id="bulkForm" method="POST" action="{{ url_for('hrm_employees_bulk') }}" style="display:none;"></form>
+</div>
+
+<div id="hrmCardView" style="display:none;">
+<div class="card"><div class="hrm-emp-cards">
+{% for row in employees %}
+{% set e = row.emp %}
+<div class="hrm-emp-card" onclick="location.href='{{ url_for('hrm_employee_form', id=e.id) }}'">
+    <div class="hrm-emp-card-head">
+        <div class="hrm-emp-avatar">
+            {% if e.photo %}<img src="{{ photo_url(e.photo) }}" alt="">{% else %}{{ e.name[:1] }}{% endif %}
+        </div>
+        <div>
+            <div class="hrm-emp-name">{{ e.name }}</div>
+            <div class="hrm-emp-code">{{ e.code }}</div>
+        </div>
+        <span class="badge {{ 'badge-success' if e.is_active else 'badge-danger' }}" style="margin-right:auto;">{{ row.status_label }}</span>
+    </div>
+    <div class="hrm-emp-meta">
+        <div><i class="fas fa-sitemap"></i> {{ row.dept }}</div>
+        <div><i class="fas fa-briefcase"></i> {{ row.position }}</div>
+        <div><i class="fas fa-phone"></i> {{ e.phone or '—' }}</div>
+        <div><i class="fas fa-money-bill-wave"></i> {{ "{:,.2f}".format(e.salary or 0) }}</div>
+    </div>
+</div>
+{% else %}
+<div class="empty-state" style="grid-column:1/-1;"><i class="fas fa-users"></i><h3>لا يوجد موظفون</h3></div>
 {% endfor %}
-</tbody></table></div></div>
+</div></div>
+</div>
 {% endblock %}
