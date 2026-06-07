@@ -51,7 +51,7 @@ function showToast(msg, type = 'success') {
     const toast = document.createElement('div');
     toast.className = `alert alert-${type}`;
     toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;min-width:300px;text-align:center;animation:slideDown 0.3s ease;';
-    toast.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> ${msg}`;
+    toast.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : type === 'warning' ? 'exclamation-triangle' : 'exclamation-circle'}"></i> ${msg}`;
     document.body.appendChild(toast);
     setTimeout(() => { toast.style.opacity='0'; setTimeout(() => toast.remove(), 500); }, 3000);
 }
