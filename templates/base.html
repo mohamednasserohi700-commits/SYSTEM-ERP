@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl" data-theme="dark" data-layout-default="{{ layout_max_width | default('1400px') }}">
+<html lang="ar" dir="rtl" data-theme="fiori" data-layout-default="{{ layout_max_width | default('1400px') }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5, viewport-fit=cover">
-    <meta name="theme-color" content="#0f1422">
+    <meta name="theme-color" content="#F5F7FA">
     <title>{% block title %}نظام ERP{% endblock %} | {{ app_brand_title }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -26,43 +26,111 @@
             --text:#0f172a;--text-muted:#475569;--border:#e2e8f0;
             --card:#ffffff;--shadow:0 4px 24px rgba(15,23,42,.08);
         }
-        /* ERP 2026 — Modern Corporate Minimalism (system theme) */
-        [data-theme="erp2026"]{
-            --primary:#0b1f33;          /* deep navy */
-            --secondary:#0f2a45;        /* panel navy */
-            --accent:#2E5F8F;           /* light blue */
-            --accent-hover:#3a78b0;
-            --accent-soft:rgba(46,95,143,.16);
-            --success:#2ecc71;
-            --danger:#E74C3C;
-            --warning:#f59e0b;
-            --info:#60a5fa;
-            --purple:#8b5cf6;
-            --text:#f1f5f9;
-            --text-muted:#a0a0a0;
-            --border:rgba(255,255,255,.08);
-            --card:rgba(255,255,255,.055);
-            --shadow:0 18px 60px rgba(0,0,0,.42);
-            --glow:0 0 28px rgba(46,95,143,.28);
+        /* SAP Fiori — Enterprise (الثيم الافتراضي) */
+        [data-theme="fiori"]{
+            --primary:#F5F7FA;
+            --secondary:#FFFFFF;
+            --navy:#16325C;
+            --accent:#0A6ED1;
+            --accent-hover:#0854A0;
+            --accent-soft:rgba(10,110,209,.08);
+            --success:#107E3E;
+            --danger:#BB0000;
+            --warning:#E9730C;
+            --info:#0A6ED1;
+            --purple:#6A6D70;
+            --text:#16325C;
+            --text-muted:#6A6D70;
+            --border:#D9E2EC;
+            --card:#FFFFFF;
+            --shadow:0 2px 8px rgba(22,50,92,.08);
+            --glow:0 4px 16px rgba(10,110,209,.18);
+            --radius:10px;
+            --sidebar-w:290px;
+            --topbar-h:62px;
         }
-        /* ERP 2026 Neon — Bold Enterprise (matches login style) */
-        [data-theme="neon2026"]{
-            --primary:#0F0F1E;          /* background */
-            --secondary:rgba(26,26,46,.72); /* panels */
-            --accent:#0066FF;           /* electric blue */
-            --accent-hover:#1f7bff;
-            --accent-soft:rgba(0,102,255,.16);
-            --success:#2ecc71;
-            --danger:#FF4466;
-            --warning:#f59e0b;
-            --info:#00D4FF;
-            --purple:#7C3AED;
-            --text:#FFFFFF;
-            --text-muted:rgba(255,255,255,.62);
-            --border:rgba(255,255,255,.10);
-            --card:rgba(10,10,22,.45);
-            --shadow:0 22px 70px rgba(0,0,0,.55);
-            --glow:0 0 28px rgba(0,102,255,.28);
+        [data-theme="fiori"] body{background:var(--primary);color:var(--text)}
+        [data-theme="fiori"] body::before{display:none}
+        [data-theme="fiori"] .sidebar{
+            background:var(--secondary);
+            border-left:1px solid var(--border);
+            box-shadow:-2px 0 16px rgba(22,50,92,.06);
+            border-radius:0;
+        }
+        [data-theme="fiori"] .sidebar-logo{background:rgba(10,110,209,.06);border-bottom-color:var(--border)}
+        [data-theme="fiori"] .logo-text .name{color:var(--navy)}
+        [data-theme="fiori"] .nav-link{color:var(--text-muted)}
+        [data-theme="fiori"] .nav-link:hover{background:var(--accent-soft);color:var(--navy)}
+        [data-theme="fiori"] .nav-link:hover i{color:var(--accent)}
+        [data-theme="fiori"] .nav-link.active{
+            background:var(--accent);
+            color:#fff;
+            box-shadow:var(--glow);
+        }
+        [data-theme="fiori"] .nav-link.active::after{background:rgba(255,255,255,.85)}
+        [data-theme="fiori"] .topbar{
+            background:#fff;
+            border-bottom:1px solid var(--border);
+            box-shadow:0 1px 4px rgba(22,50,92,.06);
+            backdrop-filter:none;
+        }
+        [data-theme="fiori"] .card{
+            background:var(--card);
+            border-color:var(--border);
+            box-shadow:var(--shadow);
+            border-radius:10px;
+        }
+        [data-theme="fiori"] .card-header{background:#FAFBFC;border-bottom-color:var(--border)}
+        [data-theme="fiori"] .card-title i{color:var(--accent)}
+        [data-theme="fiori"] .stat-card{
+            background:var(--card);
+            border-color:var(--border);
+            box-shadow:var(--shadow);
+        }
+        [data-theme="fiori"] .stat-card:hover{
+            border-color:rgba(10,110,209,.35);
+            box-shadow:0 8px 24px rgba(10,110,209,.12);
+            transform:translateY(-2px);
+        }
+        [data-theme="fiori"] .stats-grid .stat-card:first-child{
+            background:linear-gradient(135deg,rgba(255,255,255,.98),rgba(245,247,250,.92));
+            backdrop-filter:blur(10px);
+            -webkit-backdrop-filter:blur(10px);
+        }
+        [data-theme="fiori"] .btn-primary{background:var(--accent);color:#fff}
+        [data-theme="fiori"] .btn-primary:hover{background:var(--accent-hover);box-shadow:0 4px 14px rgba(10,110,209,.28)}
+        [data-theme="fiori"] .btn-outline:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+        [data-theme="fiori"] .form-control{background:#fff;border-color:var(--border);color:var(--text)}
+        [data-theme="fiori"] .form-control:focus{
+            border-color:var(--accent);
+            background:#fff;
+            box-shadow:0 0 0 3px rgba(10,110,209,.15);
+        }
+        [data-theme="fiori"] select.form-control option{background:#fff;color:var(--text)}
+        [data-theme="fiori"] thead tr{background:#F5F7FA;border-bottom:2px solid var(--border)}
+        [data-theme="fiori"] th{color:var(--navy);font-weight:700}
+        [data-theme="fiori"] td{border-bottom-color:var(--border)}
+        [data-theme="fiori"] tbody tr:hover td{background:rgba(10,110,209,.04)}
+        [data-theme="fiori"] .user-avatar{background:linear-gradient(135deg,var(--accent),var(--navy));color:#fff}
+        [data-theme="fiori"] .stat-icon.blue{background:rgba(10,110,209,.12);color:var(--accent)}
+        [data-theme="fiori"] .stat-icon.gold{background:rgba(233,115,12,.12);color:var(--warning)}
+        [data-theme="fiori"] .stat-icon.green{background:rgba(16,126,62,.12);color:var(--success)}
+        [data-theme="fiori"] .stat-icon.red{background:rgba(187,0,0,.1);color:var(--danger)}
+        [data-theme="fiori"] .badge-success{background:rgba(16,126,62,.12);color:var(--success)}
+        [data-theme="fiori"] .badge-danger{background:rgba(187,0,0,.1);color:var(--danger)}
+        [data-theme="fiori"] .badge-warning{background:rgba(233,115,12,.12);color:var(--warning)}
+        [data-theme="fiori"] .badge-info{background:rgba(10,110,209,.12);color:var(--accent)}
+        [data-theme="fiori"] .alert-success{background:rgba(16,126,62,.08);border:1px solid rgba(16,126,62,.2);color:var(--success)}
+        [data-theme="fiori"] .alert-error,[data-theme="fiori"] .alert-danger{background:rgba(187,0,0,.06);border:1px solid rgba(187,0,0,.18);color:var(--danger)}
+        [data-theme="fiori"] .alert-warning{background:rgba(233,115,12,.08);border:1px solid rgba(233,115,12,.2);color:var(--warning)}
+        [data-theme="fiori"] .alert-info{background:rgba(10,110,209,.08);border:1px solid rgba(10,110,209,.18);color:var(--accent)}
+        [data-theme="fiori"] .sidebar-nav{scrollbar-color:rgba(22,50,92,.12) transparent}
+        [data-theme="light"]{
+            --primary:#f8fafc;--secondary:#ffffff;--accent:#ca8a04;--accent-hover:#a16207;
+            --accent-soft:rgba(202,138,4,.14);--success:#047857;--danger:#b91c1c;
+            --warning:#b45309;--info:#1d4ed8;--purple:#6d28d9;
+            --text:#0f172a;--text-muted:#475569;--border:#e2e8f0;
+            --card:#ffffff;--shadow:0 4px 24px rgba(15,23,42,.08);
         }
         [data-theme="light"] body::before{background:radial-gradient(ellipse 80% 50% at 5% 0%,rgba(202,138,4,.07) 0%,transparent 55%),
             radial-gradient(ellipse 50% 80% at 95% 100%,rgba(29,78,216,.06) 0%,transparent 55%)}
@@ -82,64 +150,7 @@
         body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
             background:radial-gradient(ellipse 80% 50% at 5% 0%,rgba(245,158,11,.05) 0%,transparent 60%),
                        radial-gradient(ellipse 50% 80% at 95% 100%,rgba(59,130,246,.04) 0%,transparent 60%)}
-        /* Unique ERP 2026 background (subtle, non-distracting) */
-        [data-theme="erp2026"] body{
-            background:
-                radial-gradient(ellipse 120% 80% at 10% 10%, rgba(46,95,143,.20) 0%, transparent 55%),
-                radial-gradient(ellipse 90% 90% at 90% 90%, rgba(27,58,92,.22) 0%, transparent 55%),
-                linear-gradient(135deg, #071726 0%, #0b1f33 40%, #0f2a45 70%, #071726 100%);
-        }
-        [data-theme="erp2026"] body::before{
-            background:
-                radial-gradient(ellipse 90% 60% at 18% 18%, rgba(96,165,250,.14) 0%, transparent 60%),
-                radial-gradient(ellipse 70% 80% at 88% 84%, rgba(46,95,143,.12) 0%, transparent 60%);
-        }
-        [data-theme="erp2026"] body::after{
-            content:'';
-            position:fixed;
-            inset:0;
-            pointer-events:none;
-            z-index:0;
-            background-image:
-                radial-gradient(circle 1px at 20% 30%, rgba(255,255,255,0.16), rgba(255,255,255,0) 1px),
-                radial-gradient(circle 1px at 60% 70%, rgba(255,255,255,0.10), rgba(255,255,255,0) 1px),
-                radial-gradient(circle 1px at 80% 20%, rgba(255,255,255,0.12), rgba(255,255,255,0) 1px);
-            background-size: 520px 520px;
-            opacity:.55;
-        }
-        /* Neon 2026 background (animated gradient + subtle grid) */
-        [data-theme="neon2026"] body{
-            background: var(--primary);
-        }
-        [data-theme="neon2026"] body::before{
-            background:
-                radial-gradient(ellipse 60% 55% at 20% 25%, rgba(0,102,255,.22) 0%, transparent 55%),
-                radial-gradient(ellipse 60% 55% at 80% 75%, rgba(124,58,237,.18) 0%, transparent 55%),
-                radial-gradient(ellipse 55% 50% at 70% 20%, rgba(236,72,153,.10) 0%, transparent 55%),
-                radial-gradient(ellipse 55% 55% at 30% 85%, rgba(0,212,255,.10) 0%, transparent 55%);
-            filter: blur(10px);
-            animation: erpNeonBg 16s ease-in-out infinite;
-        }
-        [data-theme="neon2026"] body::after{
-            content:'';
-            position:fixed;
-            inset:0;
-            pointer-events:none;
-            z-index:0;
-            opacity:.18;
-            background-image:
-                linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px);
-            background-size: 44px 44px;
-            mask-image: radial-gradient(circle at 50% 35%, rgba(0,0,0,1) 0%, rgba(0,0,0,.65) 45%, rgba(0,0,0,0) 72%);
-        }
-        @keyframes erpNeonBg{
-            0%{transform:translate(-2%, -1%) scale(1)}
-            50%{transform:translate(2%, 2%) scale(1.03)}
-            100%{transform:translate(-2%, -1%) scale(1)}
-        }
-
-        /* SIDEBAR — يتبع ثيم النظام (dark / light / erp2026 / neon2026) */
+        /* SIDEBAR */
         .sidebar{
             width:var(--sidebar-w);
             height:100vh;
@@ -155,14 +166,6 @@
             border-left:1px solid var(--border);
             border-radius:24px 0 0 24px;
             box-shadow:var(--shadow);
-        }
-        [data-theme="erp2026"] .sidebar{
-            backdrop-filter:blur(18px);
-            -webkit-backdrop-filter:blur(18px);
-        }
-        [data-theme="neon2026"] .sidebar{
-            backdrop-filter:blur(20px);
-            -webkit-backdrop-filter:blur(20px);
         }
         .sidebar-nav{
             flex:1;
@@ -313,18 +316,6 @@
         .topbar{height:var(--topbar-h);background:var(--card);backdrop-filter:blur(20px);
             border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;
             justify-content:space-between;position:sticky;top:0;z-index:100;flex-shrink:0}
-        [data-theme="erp2026"] .topbar{
-            background: linear-gradient(90deg, rgba(15,42,69,.88) 0%, rgba(11,31,51,.78) 55%, rgba(15,42,69,.88) 100%);
-            backdrop-filter: blur(22px);
-            -webkit-backdrop-filter: blur(22px);
-            box-shadow: 0 6px 28px rgba(0,0,0,.18);
-        }
-        [data-theme="neon2026"] .topbar{
-            background: linear-gradient(90deg, rgba(0,102,255,.10), rgba(124,58,237,.08), rgba(236,72,153,.06));
-            backdrop-filter: blur(22px);
-            -webkit-backdrop-filter: blur(22px);
-            box-shadow: 0 10px 34px rgba(0,0,0,.22);
-        }
         /* TOPBAR responsive layout (prevents overlap) */
         .topbar > div:first-child{min-width:0}
         .topbar-right{min-width:0;flex-shrink:0}
@@ -413,42 +404,6 @@
 
         /* CARDS */
         .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
-        [data-theme="erp2026"] .card{
-            background: linear-gradient(180deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.04) 100%);
-            border-color: rgba(255,255,255,.10);
-            box-shadow: 0 10px 34px rgba(0,0,0,.22);
-        }
-        [data-theme="erp2026"] .card-header{
-            background: rgba(255,255,255,.03);
-        }
-        [data-theme="neon2026"] .card{
-            background: rgba(10,10,22,.42);
-            border-color: rgba(255,255,255,.10);
-            box-shadow: 0 22px 70px rgba(0,0,0,.35);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-        }
-        [data-theme="neon2026"] .card-header{
-            background: rgba(255,255,255,.02);
-        }
-
-        [data-theme="neon2026"] .btn-primary{
-            background: linear-gradient(90deg, rgba(0,102,255,1), rgba(124,58,237,1));
-            color:#fff;
-            box-shadow: 0 18px 54px rgba(0,102,255,.12);
-        }
-        [data-theme="neon2026"] .btn-primary:hover{
-            background: linear-gradient(90deg, rgba(31,123,255,1), rgba(144,93,255,1));
-            box-shadow: 0 22px 70px rgba(0,102,255,.18);
-        }
-        [data-theme="neon2026"] .form-control{
-            background: rgba(26,26,46,.55);
-            border-color: rgba(255,255,255,.10);
-        }
-        [data-theme="neon2026"] .form-control:focus{
-            border-color: rgba(0,102,255,.55);
-            box-shadow: 0 0 0 3px rgba(0,102,255,.18);
-        }
         .card-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
         .card-title{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
         .card-title i{color:var(--accent)}
@@ -584,15 +539,14 @@
     <script>
     (function(){
       try{
-        // Default theme for new devices (no saved preference)
-        var t=localStorage.getItem('erp_theme')||'neon2026';
+        var t=localStorage.getItem('erp_theme')||'fiori';
+        if(t==='erp2026'||t==='neon2026'){ t='fiori'; localStorage.setItem('erp_theme','fiori'); }
         document.documentElement.setAttribute('data-theme',t);
         var m=document.querySelector('meta[name="theme-color"]');
         if(m){
           m.setAttribute('content',
-            t==='light'?'#f8fafc':
-            (t==='erp2026'?'#0b1f33':
-            (t==='neon2026'?'#0F0F1E':'#0f1422'))
+            t==='fiori'?'#F5F7FA':
+            (t==='light'?'#f8fafc':'#0f1422')
           );
         }
       }catch(e){}
@@ -604,18 +558,16 @@
       var m=document.querySelector('meta[name="theme-color"]');
       if(m){
         m.setAttribute('content',
-          next==='light'?'#f8fafc':
-          (next==='erp2026'?'#0b1f33':
-          (next==='neon2026'?'#0F0F1E':'#0f1422'))
+          next==='fiori'?'#F5F7FA':
+          (next==='light'?'#f8fafc':'#0f1422')
         );
       }
-      // small toast if available
       try{ if(typeof window.showToast==='function') window.showToast('تم تغيير الثيم', 'success'); }catch(e){}
     }
     function erpToggleTheme(){
       var d=document.documentElement;
-      var cur=d.getAttribute('data-theme')||'dark';
-      var order=['dark','light','erp2026','neon2026'];
+      var cur=d.getAttribute('data-theme')||'fiori';
+      var order=['fiori','light','dark'];
       var idx=order.indexOf(cur);
       var next=order[(idx<0?0:idx+1)%order.length];
       erpSetTheme(next);
@@ -905,7 +857,7 @@
                 <i class="fas fa-certificate" style="margin-left:6px;opacity:.85;"></i>{{ subscription_status.line }}
             </span>
             {% endif %}
-            <button type="button" class="theme-toggle" onclick="erpToggleTheme()" title="تبديل الوضع الفاتح/الداكن"><i class="fas fa-adjust"></i></button>
+            <button type="button" class="theme-toggle" onclick="erpToggleTheme()" title="تبديل الثيم (Fiori / فاتح / داكن)"><i class="fas fa-adjust"></i></button>
             <div class="erp-device-layout-tools" style="display:flex;align-items:center;gap:4px;flex-shrink:0;" title="وضع العرض — يُحفظ على هذا الجهاز فقط">
                 <button type="button" id="btnLayoutPC" onclick="erpSetLayout('pc')" title="عرض PC"
                     style="display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:7px;font-size:11.5px;font-weight:700;
@@ -1042,8 +994,7 @@ async function loadNotif() {
         const d = await r.json();
         const pendingLeaves = d.pending_leaves || 0;
         const hrmItems = d.hrm_items || [];
-        const hrmAlerts = pendingLeaves + (d.hrm_items ? d.hrm_items.filter(x => x.kind === 'stored').length : 0);
-        const total = (d.total != null ? d.total : (d.pending_transfers + d.low_stock + hrmAlerts));
+        const total = (d.total != null ? d.total : (d.pending_transfers + d.low_stock + hrmItems.length));
         const el = document.getElementById('notifCount');
         el.textContent = total > 99 ? '99+' : total;
         el.classList.toggle('show', total > 0);
@@ -1057,18 +1008,10 @@ async function loadNotif() {
         if(d.pending_transfers > 0) items.push(`<a href="/transfers?status=pending" class="notif-item" onclick="closeNotif()"><div class="notif-icon warn"><i class="fas fa-exchange-alt"></i></div><div class="notif-text"><b>تحويلات معلقة</b><span>${d.pending_transfers} طلب ينتظر الموافقة</span></div></a>`);
         if(d.low_stock > 0) items.push(`<a href="/reports/low-stock" class="notif-item" onclick="closeNotif()"><div class="notif-icon danger"><i class="fas fa-exclamation-triangle"></i></div><div class="notif-text"><b>نقص مخزون</b><span>${d.low_stock} صنف وصل للحد الأدنى</span></div></a>`);
         if(d.overdue_customers > 0) items.push(`<a href="/reports/customers" class="notif-item" onclick="closeNotif()"><div class="notif-icon info"><i class="fas fa-users"></i></div><div class="notif-text"><b>أرصدة عملاء</b><span>${d.overdue_customers} عميل لديه رصيد مستحق</span></div></a>`);
-        const leaveNotifs = (hrmItems || []).filter(function(n){ return n.kind === 'leave'; });
-        if(leaveNotifs.length > 0) {
-            leaveNotifs.forEach(function(n) {
-                items.push(`<a href="${n.link || '/hrm/leaves?status=pending'}" class="notif-item" onclick="closeNotif()"><div class="notif-icon warn"><i class="fas fa-${n.icon || 'calendar-alt'}"></i></div><div class="notif-text"><b>${n.title}</b><span>${n.message}</span></div></a>`);
-            });
-        } else if(pendingLeaves > 0) {
-            items.push(`<a href="/hrm/leaves?status=pending" class="notif-item" onclick="closeNotif()"><div class="notif-icon warn"><i class="fas fa-calendar-alt"></i></div><div class="notif-text"><b>طلبات إجازة معلقة</b><span>${pendingLeaves} طلب يحتاج اعتماد</span></div></a>`);
-        }
-        (hrmItems || []).filter(function(n){ return n.kind !== 'leave'; }).forEach(function(n) {
+        (hrmItems || []).forEach(function(n) {
             const tone = n.tone === 'warn' ? 'warn' : (n.tone === 'danger' ? 'danger' : 'info');
             const icon = n.icon || 'bell';
-            items.push(`<a href="${n.link || '/hrm/leaves'}" class="notif-item" onclick="closeNotif()"><div class="notif-icon ${tone}"><i class="fas fa-${icon}"></i></div><div class="notif-text"><b>${n.title || 'إشعار'}</b><span>${n.message || ''}</span></div></a>`);
+            items.push(`<a href="${n.link || '/hrm/dashboard'}" class="notif-item" onclick="closeNotif()"><div class="notif-icon ${tone}"><i class="fas fa-${icon}"></i></div><div class="notif-text"><b>${n.title || 'إشعار'}</b><span>${n.message || ''}</span></div></a>`);
         });
         document.getElementById('notifList').innerHTML = items.length ? items.join('') : `<div class="notif-empty"><i class="fas fa-check-circle" style="font-size:26px;display:block;margin-bottom:10px;color:var(--success);opacity:.7;"></i>لا توجد إشعارات</div>`;
     } catch(e) {}
