@@ -1,6 +1,0 @@
-{% extends 'base.html' %}{% from 'hrm/_macros.html' import hrm_nav %}
-{% block page_title %}تقرير تقييم الأداء{% endblock %}
-{% block content %}{{ hrm_nav('reports') }}
-<div class="card"><table><thead><tr><th>موظف</th><th>تاريخ</th><th>الدرجة</th></tr></thead>
-<tbody>{% for r in reviews %}<tr><td>{{ r.employee.name if r.employee else '' }}</td><td>{{ r.review_date }}</td><td>{{ r.score }}</td></tr>{% endfor %}</tbody></table></div>
-{% endblock %}

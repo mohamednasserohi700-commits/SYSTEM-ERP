@@ -1,8 +1,0 @@
-{% extends 'base.html' %}{% from 'hrm/_macros.html' import hrm_nav %}
-{% block title %}كشوف المرتبات{% endblock %}{% block page_title %}كشوف المرتبات{% endblock %}
-{% block content %}{{ hrm_nav('payslips') }}
-<div class="card"><table><thead><tr><th>مسير الرواتب</th><th>الصافي</th><th></th></tr></thead>
-<tbody>{% for p in payrolls %}
-<tr><td>{{ p.period_year }}/{{ '%02d'|format(p.period_month) }}</td><td>{{ "{:,.2f}".format(p.total_net or 0) }}</td>
-<td><a href="{{ url_for('hrm_payroll_detail', id=p.id) }}" class="btn btn-outline btn-xs">عرض التفاصيل والطباعة</a></td></tr>{% endfor %}</tbody></table></div>
-{% endblock %}
