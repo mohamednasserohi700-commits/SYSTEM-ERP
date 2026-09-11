@@ -44,18 +44,18 @@
 {% if shift.status == 'open' %}
 <div class="card" style="max-width:620px;margin-bottom:20px;"><div class="card-body">
 
-    {{/* ── تفصيل مكونات الكاش المتوقع ── */}}
+    {# ── تفصيل مكونات الكاش المتوقع ── #}
     <div style="font-size:14px;font-weight:700;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">
         <i class="fas fa-calculator" style="margin-left:6px;"></i>تفصيل الكاش في الدرج
     </div>
 
     <div style="background:var(--bg-secondary,#f8f9fa);border-radius:8px;padding:14px 16px;margin-bottom:16px;">
-        {{/* رصيد افتتاحي */}}
+        {# رصيد افتتاحي #}
         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed var(--border);">
             <span style="color:var(--text-muted);font-size:13px;"><i class="fas fa-door-open" style="margin-left:6px;color:var(--warning);"></i>رصيد افتتاحي</span>
             <span style="font-weight:700;">{{ "{:,.2f}".format(shift.opening_balance or 0) }}</span>
         </div>
-        {{/* + مبيعات كاش */}}
+        {# + مبيعات كاش #}
         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed var(--border);">
             <span style="color:var(--text-muted);font-size:13px;">
                 <i class="fas fa-plus-circle" style="margin-left:6px;color:var(--success);"></i>
@@ -63,7 +63,7 @@
             </span>
             <span style="font-weight:700;color:var(--success);">+ {{ "{:,.2f}".format(cash_sales_total) }}</span>
         </div>
-        {{/* - مصاريف */}}
+        {# - مصاريف #}
         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);margin-bottom:6px;">
             <span style="color:var(--text-muted);font-size:13px;">
                 <i class="fas fa-minus-circle" style="margin-left:6px;color:var(--danger);"></i>
@@ -71,7 +71,7 @@
             </span>
             <span style="font-weight:700;color:var(--danger);">- {{ "{:,.2f}".format(expenses_total) }}</span>
         </div>
-        {{/* = الكاش المتوقع */}}
+        {# = الكاش المتوقع #}
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0 2px;">
             <span style="font-size:15px;font-weight:800;"><i class="fas fa-equals" style="margin-left:8px;color:var(--accent);"></i>الكاش المتوقع في الدرج</span>
             <span style="font-size:22px;font-weight:900;color:var(--accent);">{{ "{:,.2f}".format(expected_now) }}</span>
@@ -84,7 +84,7 @@
             <input type="number" name="actual_cash" id="actualCashInput" class="form-control" step="0.01" min="0" required
                    oninput="calcDiff()" placeholder="0.00">
         </div>
-        {{/* معاينة الفرق قبل القفل */}}
+        {# معاينة الفرق قبل القفل #}
         <div id="diffPreview" style="display:none;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:14px;font-weight:700;text-align:center;"></div>
         <div class="form-group">
             <label class="form-label">ملاحظات القفل</label>
