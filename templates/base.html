@@ -532,18 +532,6 @@
         @media(max-width:900px){
             .erp-device-layout-tools{display:none!important;}
         }
-        /* طباعة عامة لصفحات التقارير (غير قوالب الفواتير المخصصة):
-           إخفاء القائمة الجانبية والشريط العلوي والأزرار، وطباعة المحتوى فقط.
-           ملحوظة: الجداول متعددة الأعمدة (تقارير التحليل) غير مناسبة فعليًا
-           لورق حراري 80mm/58mm — هذا التنسيق مُعدّ لطباعة A4/عادية. */
-        @media print {
-            .sidebar, .topbar, .app-footer-note, .no-print,
-            #sidebarOverlay, .mobile-menu-btn { display: none !important; }
-            .main-content { margin: 0 !important; padding: 0 !important; width: 100% !important; }
-            .content { padding: 0 !important; }
-            body { background: #fff !important; }
-            @page { size: A4; margin: 10mm; }
-        }
     </style>
     <script>
     (function(){try{var lw=localStorage.getItem('erp_layout_max_width');if(lw)document.documentElement.style.setProperty('--layout-max',lw);}catch(e){}})();
@@ -613,8 +601,14 @@
         <div class="nav-section">
             <div class="nav-label">المبيعات والعمليات</div>
             {% if can('sales') %}
-            <a href="{{ url_for('sales') }}" class="nav-link {% if 'sale' in (request.endpoint or '') and 'return' not in (request.endpoint or '') and 'report' not in (request.endpoint or '') %}active{% endif %}">
+            <a href="{{ url_for('sales') }}" class="nav-link {% if 'sale' in (request.endpoint or '') and 'return' not in (request.endpoint or '') and 'report' not in (request.endpoint or '') and 'shift' not in (request.endpoint or '') %}active{% endif %}">
                 <i class="fas fa-cash-register"></i><span class="label">المبيعات</span>
+            </a>
+            {% endif %}
+            {% if can('shifts') %}
+            <a href="{{ url_for('shifts') }}" class="nav-link {% if 'shift' in (request.endpoint or '') %}active{% endif %}">
+                <i class="fas fa-wallet"></i><span class="label">الورديات</span>
+                {% if current_open_shift %}<span class="nav-badge" style="background:rgba(16,185,129,.18);color:#34d399;">مفتوحة</span>{% endif %}
             </a>
             {% endif %}
             {% if can('purchases') %}
@@ -803,6 +797,15 @@
             <span class="sub-pill {% if subscription_status.kind in ('developer','permanent') %}ok{% elif subscription_status.kind in ('expired','none') %}bad{% else %}warn{% endif %}" title="حالة الاشتراك / الترخيص">
                 <i class="fas fa-certificate" style="margin-left:6px;opacity:.85;"></i>{{ subscription_status.line }}
             </span>
+            {% endif %}
+            {% if current_open_shift %}
+            <a href="{{ url_for('shift_detail', id=current_open_shift.id) }}" class="sub-pill ok" title="لديك وردية مفتوحة" style="text-decoration:none;">
+                <i class="fas fa-wallet" style="margin-left:6px;opacity:.85;"></i> وردية مفتوحة
+            </a>
+            {% elif can('shifts') %}
+            <a href="{{ url_for('open_shift') }}" class="sub-pill warn" title="لا توجد وردية مفتوحة" style="text-decoration:none;">
+                <i class="fas fa-wallet" style="margin-left:6px;opacity:.85;"></i> افتح وردية
+            </a>
             {% endif %}
             <button type="button" class="theme-toggle" onclick="erpToggleTheme()" title="تبديل الثيم (Fiori / فاتح / داكن)"><i class="fas fa-adjust"></i></button>
             <div class="erp-device-layout-tools" style="display:flex;align-items:center;gap:4px;flex-shrink:0;" title="وضع العرض — يُحفظ على هذا الجهاز فقط">

@@ -150,6 +150,15 @@
                             <span style="font-size: 16px; font-weight: 700;">الإجمالي</span>
                             <span id="totalDisplay" style="font-size: 20px; font-weight: 800; color: var(--accent);">0.00</span>
                         </div>
+                        <div style="padding: 10px 0; border-bottom: 1px solid var(--border);">
+                            <label class="form-label" style="margin-bottom: 8px; display:block;">طريقة الدفع</label>
+                            <select name="payment_method" id="paymentMethod" class="form-control">
+                                <option value="cash" {% if not edit_mode or (sale and sale.payment_method=='cash') %}selected{% endif %}>كاش</option>
+                                <option value="card" {% if edit_mode and sale and sale.payment_method=='card' %}selected{% endif %}>فيزا / بطاقة</option>
+                                <option value="transfer" {% if edit_mode and sale and sale.payment_method=='transfer' %}selected{% endif %}>تحويل بنكي</option>
+                                <option value="other" {% if edit_mode and sale and sale.payment_method=='other' %}selected{% endif %}>أخرى</option>
+                            </select>
+                        </div>
                         <div style="padding: 10px 0;">
                             <label class="form-label" style="margin-bottom: 8px; display:block;">المبلغ المدفوع</label>
                             <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:8px;">

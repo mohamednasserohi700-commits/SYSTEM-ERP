@@ -1,0 +1,213 @@
+{% extends 'base.html' %}
+{% set block_icon = 'fas fa-wallet' %}
+{% block title %}وردية {{ shift.shift_number }}{% endblock %}
+{% block page_title %}وردية {{ shift.shift_number }}{% endblock %}
+{% block breadcrumb %}
+    {{ shift.user.full_name if shift.user else '—' }} —
+    {% if shift.status == 'open' %}مفتوحة منذ {{ shift.opened_at.strftime('%Y/%m/%d %H:%M') if shift.opened_at else '—' }}
+    {% else %}مقفولة بتاريخ {{ shift.closed_at.strftime('%Y/%m/%d %H:%M') if shift.closed_at else '—' }}{% endif %}
+{% endblock %}
+{% block topbar_actions %}<a href="{{ url_for('shifts') }}" class="btn btn-outline"><i class="fas fa-list"></i> كل الورديات</a>{% endblock %}
+
+{% block content %}
+<div class="stats-grid" style="margin-bottom:20px;">
+    <div class="stat-card">
+        <div class="stat-icon gold"><i class="fas fa-door-open"></i></div>
+        <div>
+            <div class="stat-value">{{ "{:,.2f}".format(shift.opening_balance or 0) }}</div>
+            <div class="stat-label">رصيد افتتاحي</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon green"><i class="fas fa-money-bill-wave"></i></div>
+        <div>
+            <div class="stat-value">{{ "{:,.2f}".format(cash_sales_total) }}</div>
+            <div class="stat-label">مبيعات كاش ({{ cash_sales|length }})</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon blue"><i class="fas fa-credit-card"></i></div>
+        <div>
+            <div class="stat-value">{{ "{:,.2f}".format(other_sales_total) }}</div>
+            <div class="stat-label">مبيعات أخرى — بطاقة/تحويل ({{ other_sales|length }})</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon red"><i class="fas fa-receipt"></i></div>
+        <div>
+            <div class="stat-value">{{ "{:,.2f}".format(expenses_total) }}</div>
+            <div class="stat-label">مصاريف من الدرج ({{ expenses|length }})</div>
+        </div>
+    </div>
+</div>
+
+{% if shift.status == 'open' %}
+<div class="card" style="max-width:620px;margin-bottom:20px;"><div class="card-body">
+
+    {{/* ── تفصيل مكونات الكاش المتوقع ── */}}
+    <div style="font-size:14px;font-weight:700;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">
+        <i class="fas fa-calculator" style="margin-left:6px;"></i>تفصيل الكاش في الدرج
+    </div>
+
+    <div style="background:var(--bg-secondary,#f8f9fa);border-radius:8px;padding:14px 16px;margin-bottom:16px;">
+        {{/* رصيد افتتاحي */}}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed var(--border);">
+            <span style="color:var(--text-muted);font-size:13px;"><i class="fas fa-door-open" style="margin-left:6px;color:var(--warning);"></i>رصيد افتتاحي</span>
+            <span style="font-weight:700;">{{ "{:,.2f}".format(shift.opening_balance or 0) }}</span>
+        </div>
+        {{/* + مبيعات كاش */}}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed var(--border);">
+            <span style="color:var(--text-muted);font-size:13px;">
+                <i class="fas fa-plus-circle" style="margin-left:6px;color:var(--success);"></i>
+                مبيعات كاش <span style="font-size:11px;background:var(--success);color:#fff;border-radius:10px;padding:1px 7px;margin-right:4px;">{{ cash_sales|length }}</span>
+            </span>
+            <span style="font-weight:700;color:var(--success);">+ {{ "{:,.2f}".format(cash_sales_total) }}</span>
+        </div>
+        {{/* - مصاريف */}}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);margin-bottom:6px;">
+            <span style="color:var(--text-muted);font-size:13px;">
+                <i class="fas fa-minus-circle" style="margin-left:6px;color:var(--danger);"></i>
+                مصاريف من الدرج <span style="font-size:11px;background:var(--danger);color:#fff;border-radius:10px;padding:1px 7px;margin-right:4px;">{{ expenses|length }}</span>
+            </span>
+            <span style="font-weight:700;color:var(--danger);">- {{ "{:,.2f}".format(expenses_total) }}</span>
+        </div>
+        {{/* = الكاش المتوقع */}}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0 2px;">
+            <span style="font-size:15px;font-weight:800;"><i class="fas fa-equals" style="margin-left:8px;color:var(--accent);"></i>الكاش المتوقع في الدرج</span>
+            <span style="font-size:22px;font-weight:900;color:var(--accent);">{{ "{:,.2f}".format(expected_now) }}</span>
+        </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('close_shift', id=shift.id) }}" onsubmit="return confirmClose();">
+        <div class="form-group">
+            <label class="form-label">الكاش الفعلي بعد الجرد (عدّه في الدرج الآن) *</label>
+            <input type="number" name="actual_cash" id="actualCashInput" class="form-control" step="0.01" min="0" required
+                   oninput="calcDiff()" placeholder="0.00">
+        </div>
+        {{/* معاينة الفرق قبل القفل */}}
+        <div id="diffPreview" style="display:none;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:14px;font-weight:700;text-align:center;"></div>
+        <div class="form-group">
+            <label class="form-label">ملاحظات القفل</label>
+            <textarea name="close_notes" class="form-control" placeholder="أي ملاحظات عن سبب العجز/الزيادة إن وجد..."></textarea>
+        </div>
+        <button type="submit" class="btn btn-danger" style="width:100%;padding:12px;">
+            <i class="fas fa-lock"></i> قفل الوردية ومطابقة الكاش
+        </button>
+    </form>
+</div></div>
+
+<script>
+var expectedCash = {{ expected_now }};
+function calcDiff() {
+    var actual = parseFloat(document.getElementById('actualCashInput').value) || 0;
+    var diff = actual - expectedCash;
+    var el = document.getElementById('diffPreview');
+    el.style.display = 'block';
+    if (Math.abs(diff) < 0.01) {
+        el.style.background = '#d4edda'; el.style.color = '#155724';
+        el.innerHTML = '<i class="fas fa-check-circle"></i> الكاش مطابق تمامًا ✓';
+    } else if (diff > 0) {
+        el.style.background = '#d1ecf1'; el.style.color = '#0c5460';
+        el.innerHTML = '<i class="fas fa-arrow-up"></i> زيادة قدرها ' + diff.toLocaleString('ar-EG', {minimumFractionDigits:2}) + ' — راجع مصدر الزيادة';
+    } else {
+        el.style.background = '#f8d7da'; el.style.color = '#721c24';
+        el.innerHTML = '<i class="fas fa-arrow-down"></i> عجز قدره ' + Math.abs(diff).toLocaleString('ar-EG', {minimumFractionDigits:2}) + ' — راجع المبيعات والمصاريف';
+    }
+}
+function confirmClose() {
+    var actual = parseFloat(document.getElementById('actualCashInput').value) || 0;
+    var diff = actual - expectedCash;
+    var msg = 'تأكيد قفل الوردية؟\n\nالكاش المتوقع: ' + expectedCash.toLocaleString('ar-EG', {minimumFractionDigits:2});
+    msg += '\nالكاش الفعلي: ' + actual.toLocaleString('ar-EG', {minimumFractionDigits:2});
+    if (Math.abs(diff) >= 0.01) {
+        msg += '\nالفرق: ' + (diff > 0 ? 'زيادة ' : 'عجز ') + Math.abs(diff).toLocaleString('ar-EG', {minimumFractionDigits:2});
+    }
+    msg += '\n\nلن يمكن التراجع عن هذا الإجراء.';
+    return confirm(msg);
+}
+</script>
+
+{% else %}
+<div class="card" style="max-width:620px;margin-bottom:20px;"><div class="card-body">
+    <div style="font-size:14px;font-weight:700;color:var(--text-muted);margin-bottom:10px;">
+        <i class="fas fa-calculator" style="margin-left:6px;"></i>تفصيل الكاش — وردية مقفولة
+    </div>
+    <div style="background:var(--bg-secondary,#f8f9fa);border-radius:8px;padding:14px 16px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--border);">
+            <span style="color:var(--text-muted);font-size:13px;"><i class="fas fa-door-open" style="margin-left:6px;color:var(--warning);"></i>رصيد افتتاحي</span>
+            <span style="font-weight:700;">{{ "{:,.2f}".format(shift.opening_balance or 0) }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--border);">
+            <span style="color:var(--text-muted);font-size:13px;"><i class="fas fa-plus-circle" style="margin-left:6px;color:var(--success);"></i>مبيعات كاش ({{ cash_sales|length }})</span>
+            <span style="font-weight:700;color:var(--success);">+ {{ "{:,.2f}".format(cash_sales_total) }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);margin-bottom:6px;">
+            <span style="color:var(--text-muted);font-size:13px;"><i class="fas fa-minus-circle" style="margin-left:6px;color:var(--danger);"></i>مصاريف من الدرج ({{ expenses|length }})</span>
+            <span style="font-weight:700;color:var(--danger);">- {{ "{:,.2f}".format(expenses_total) }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);">
+            <span style="font-weight:700;font-size:14px;"><i class="fas fa-equals" style="margin-left:6px;"></i>الكاش المتوقع</span>
+            <span style="font-weight:800;font-size:16px;color:var(--accent);">{{ "{:,.2f}".format(shift.expected_cash or 0) }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-muted);font-size:13px;"><i class="fas fa-hand-holding-usd" style="margin-left:6px;"></i>الكاش الفعلي (بالجرد)</span>
+            <span style="font-weight:700;">{{ "{:,.2f}".format(shift.actual_cash or 0) }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0 2px;">
+            <span style="font-size:15px;font-weight:800;">الفرق</span>
+            {% set diff = shift.difference or 0 %}
+            {% if diff|abs < 0.01 %}
+                <span class="badge badge-success" style="font-size:14px;padding:6px 14px;">✓ مطابق تمامًا</span>
+            {% elif diff > 0 %}
+                <span class="badge badge-info" style="font-size:14px;padding:6px 14px;">↑ زيادة {{ "{:,.2f}".format(diff) }}</span>
+            {% else %}
+                <span class="badge badge-danger" style="font-size:14px;padding:6px 14px;">↓ عجز {{ "{:,.2f}".format(diff|abs) }}</span>
+            {% endif %}
+        </div>
+    </div>
+    {% if shift.close_notes %}
+    <div style="padding:10px;background:#fffbe6;border-radius:6px;color:#856404;font-size:13px;">
+        <i class="fas fa-sticky-note" style="margin-left:6px;"></i>{{ shift.close_notes }}
+    </div>
+    {% endif %}
+</div></div>
+{% endif %}
+
+<div class="card" style="margin-bottom:20px;">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-weight:700;"><i class="fas fa-money-bill-wave" style="margin-left:6px;color:var(--success);"></i> مبيعات الكاش أثناء الوردية</div>
+    <div class="table-container"><table>
+        <thead><tr><th>رقم الفاتورة</th><th>الوقت</th><th>العميل</th><th>المدفوع</th></tr></thead>
+        <tbody>
+            {% for s in cash_sales %}
+            <tr>
+                <td style="font-weight:700;color:var(--accent);"><a href="{{ url_for('sale_detail', id=s.id) }}">{{ s.invoice_number }}</a></td>
+                <td style="color:var(--text-muted);">{{ s.date.strftime('%H:%M') if s.date else '—' }}</td>
+                <td>{{ s.customer.name if s.customer else 'نقدي' }}</td>
+                <td style="color:var(--success);font-weight:700;">{{ "{:,.2f}".format(s.paid or 0) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4"><div class="empty-state"><i class="fas fa-receipt"></i><h3>لا توجد مبيعات كاش بعد</h3></div></td></tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+</div>
+
+{% if expenses %}
+<div class="card">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-weight:700;"><i class="fas fa-receipt" style="margin-left:6px;color:var(--danger);"></i> مصاريف أثناء الوردية</div>
+    <div class="table-container"><table>
+        <thead><tr><th>الوقت</th><th>التصنيف</th><th>الوصف</th><th>المبلغ</th></tr></thead>
+        <tbody>
+            {% for e in expenses %}
+            <tr>
+                <td style="color:var(--text-muted);">{{ e.date.strftime('%H:%M') if e.date else '—' }}</td>
+                <td><span class="badge badge-warning">{{ e.category }}</span></td>
+                <td>{{ e.description or '—' }}</td>
+                <td style="color:var(--danger);font-weight:700;">{{ "{:,.2f}".format(e.amount or 0) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+</div>
+{% endif %}
+{% endblock %}
