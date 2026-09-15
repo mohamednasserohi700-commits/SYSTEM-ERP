@@ -267,12 +267,33 @@ class InvoiceEditLog(db.Model):
     user = db.relationship('User')
 
 
+class CashShift(db.Model):
+    """وردية كاشير: فتح الدرج برصيد افتتاحي، وقفله بجرد فعلي للكاش ومطابقته بالمتوقع."""
+    id = db.Column(db.Integer, primary_key=True)
+    shift_number = db.Column(db.String(50), unique=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'))
+    opened_at = db.Column(db.DateTime, default=datetime.utcnow)
+    closed_at = db.Column(db.DateTime, nullable=True)
+    opening_balance = db.Column(db.Float, default=0)
+    expected_cash = db.Column(db.Float, nullable=True)
+    actual_cash = db.Column(db.Float, nullable=True)
+    difference = db.Column(db.Float, nullable=True)
+    status = db.Column(db.String(20), default='open')  # open, closed
+    notes = db.Column(db.Text)
+    close_notes = db.Column(db.Text)
+    user = db.relationship('User', foreign_keys=[user_id])
+    branch = db.relationship('Branch')
+
+
 class Sale(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     invoice_number = db.Column(db.String(50), unique=True)
     customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'))
     warehouse_id = db.Column(db.Integer, db.ForeignKey('warehouse.id'))
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    shift_id = db.Column(db.Integer, db.ForeignKey('cash_shift.id'), nullable=True)
+    payment_method = db.Column(db.String(20), default='cash')  # cash, card, transfer, other
     date = db.Column(db.DateTime, default=datetime.utcnow)
     subtotal = db.Column(db.Float, default=0)
     discount = db.Column(db.Float, default=0)
@@ -285,6 +306,7 @@ class Sale(db.Model):
     items = db.relationship('SaleItem', backref='sale', lazy=True, cascade='all, delete-orphan')
     user = db.relationship('User')
     warehouse = db.relationship('Warehouse')
+    shift = db.relationship('CashShift', foreign_keys=[shift_id])
 
 class SaleItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -443,8 +465,10 @@ class Expense(db.Model):
     amount = db.Column(db.Float)
     branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'))
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    shift_id = db.Column(db.Integer, db.ForeignKey('cash_shift.id'), nullable=True)
     user = db.relationship('User')
     branch = db.relationship('Branch')
+    shift = db.relationship('CashShift', foreign_keys=[shift_id])
 
 class CustomerPayment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -508,6 +532,7 @@ def admin_required(f):
 PERMISSION_KEYS = [
     ('dashboard', 'لوحة التحكم'),
     ('sales', 'المبيعات'),
+    ('shifts', 'الورديات (فتح/قفل الكاش)'),
     ('purchases', 'المشتريات'),
     ('returns', 'المرتجعات'),
     ('inventory', 'المخزون والجرد'),
@@ -606,7 +631,7 @@ def user_can(user, perm: str) -> bool:
         return True
     if user.role == 'user':
         return perm in {
-            'dashboard', 'sales', 'purchases', 'returns', 'inventory', 'transfers',
+            'dashboard', 'sales', 'shifts', 'purchases', 'returns', 'inventory', 'transfers',
             'customers', 'suppliers', 'expenses', 'products', 'categories', 'reports',
         }
     if user.role in ('hr_manager', 'hr_officer', 'payroll_officer', 'department_manager', 'employee'):
@@ -649,7 +674,7 @@ def default_role_permission_set(role: str) -> set:
         return keys_all - MANAGER_DEFAULT_DENIED - DEVELOPER_ONLY_PERMS
     if role == 'user':
         return {
-            'dashboard', 'sales', 'purchases', 'returns', 'inventory', 'transfers',
+            'dashboard', 'sales', 'shifts', 'purchases', 'returns', 'inventory', 'transfers',
             'customers', 'suppliers', 'expenses', 'products', 'categories', 'reports',
         }
     if role in ('hr_manager', 'hr_officer', 'payroll_officer', 'department_manager', 'employee'):
@@ -993,6 +1018,7 @@ def path_required_permission(path: str):
         ('/categories', 'categories'),
         ('/products', 'products'),
         ('/sales', 'sales'),
+        ('/shifts', 'shifts'),
         ('/purchases', 'purchases'),
         ('/reports', 'reports'),
         ('/about', 'dashboard'),
@@ -1340,6 +1366,19 @@ def ensure_schema():
             if 'withholding_tax' not in pcols:
                 with db.engine.begin() as conn:
                     conn.execute(text('ALTER TABLE purchase ADD COLUMN withholding_tax FLOAT DEFAULT 0'))
+        if 'sale' in tables:
+            scols = {c['name'] for c in insp.get_columns('sale')}
+            if 'shift_id' not in scols:
+                with db.engine.begin() as conn:
+                    conn.execute(text('ALTER TABLE sale ADD COLUMN shift_id INTEGER'))
+            if 'payment_method' not in scols:
+                with db.engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE sale ADD COLUMN payment_method VARCHAR(20) DEFAULT 'cash'"))
+        if 'expense' in tables:
+            excols = {c['name'] for c in insp.get_columns('expense')}
+            if 'shift_id' not in excols:
+                with db.engine.begin() as conn:
+                    conn.execute(text('ALTER TABLE expense ADD COLUMN shift_id INTEGER'))
         if 'user' in tables:
             ucols = {c['name'] for c in insp.get_columns('user')}
             utbl = '"user"' if insp.bind.dialect.name == 'postgresql' else 'user'
@@ -1482,6 +1521,22 @@ def get_next_number(prefix, model, field):
     return f"{prefix}{num:06d}"
 
 
+def get_open_shift_for_user(user_id):
+    """الوردية المفتوحة حالياً لهذا المستخدم (لو فيه)."""
+    if not user_id:
+        return None
+    return CashShift.query.filter_by(user_id=user_id, status='open').first()
+
+
+def compute_shift_expected_cash(shift):
+    """الكاش المتوقع في الدرج = الرصيد الافتتاحي + مبيعات كاش أثناء الوردية - مصاريف أثناء الوردية."""
+    cash_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.paid), 0.0)) \
+        .filter(Sale.shift_id == shift.id, Sale.payment_method == 'cash').scalar() or 0.0
+    shift_expenses = db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0.0)) \
+        .filter(Expense.shift_id == shift.id).scalar() or 0.0
+    return float(shift.opening_balance or 0) + float(cash_sales) - float(shift_expenses)
+
+
 def allocate_entity_code(prefix: str, model, field_name='code'):
     """كود تلقائي فريد (عملاء C، موردين S، موظفين E، أصناف P، …)."""
     max_id = db.session.query(db.func.max(model.id)).scalar() or 0
@@ -1610,6 +1665,7 @@ def inject_globals():
         license_expiry_message_text=(get_app_settings_dict(branch_id=None).get('license_expiry_message') or DEFAULT_SETTINGS.get('license_expiry_message', '')),
         current_branch_id=bid,
         can_delete_users=user_can_delete_users_account(current_user) if current_user.is_authenticated else False,
+        current_open_shift=get_open_shift_for_user(current_user.id) if current_user.is_authenticated else None,
     )
 
 
@@ -2552,6 +2608,117 @@ def add_supplier():
     return render_template('supplier_form.html', suggested_code=suggested)
 
 # ===== SALES =====
+@app.route('/shifts')
+@login_required
+def shifts():
+    q = CashShift.query.order_by(CashShift.opened_at.desc())
+    if current_user.role not in ('admin', 'manager', 'developer'):
+        q = q.filter(CashShift.user_id == current_user.id)
+    page = request.args.get('page', 1, type=int)
+    shifts_page = q.paginate(page=page, per_page=20)
+    my_open_shift = get_open_shift_for_user(current_user.id)
+    return render_template('shifts.html', shifts=shifts_page, my_open_shift=my_open_shift)
+
+
+@app.route('/shifts/open', methods=['GET', 'POST'])
+@login_required
+def open_shift():
+    existing = get_open_shift_for_user(current_user.id)
+    if existing:
+        flash('لديك وردية مفتوحة بالفعل — يجب قفلها أولاً قبل فتح وردية جديدة', 'error')
+        return redirect(url_for('shift_detail', id=existing.id))
+    if request.method == 'POST':
+        try:
+            opening_val = float(request.form.get('opening_balance') or 0)
+        except (TypeError, ValueError):
+            flash('الرصيد الافتتاحي غير صحيح', 'error')
+            return redirect(url_for('open_shift'))
+        if opening_val < 0:
+            flash('الرصيد الافتتاحي لا يمكن أن يكون سالباً', 'error')
+            return redirect(url_for('open_shift'))
+        shift = CashShift(
+            shift_number=get_next_number('SFT', CashShift, 'shift_number'),
+            user_id=current_user.id,
+            branch_id=getattr(current_user, 'branch_id', None),
+            opening_balance=opening_val,
+            notes=request.form.get('notes'),
+            status='open',
+        )
+        db.session.add(shift)
+        try:
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            flash('حدث خطأ غير متوقع أثناء فتح الوردية — لم يتم حفظ أي بيانات', 'error')
+            return redirect(url_for('open_shift'))
+        flash(f'تم فتح الوردية {shift.shift_number} بنجاح — بالتوفيق!', 'success')
+        return redirect(url_for('shift_detail', id=shift.id))
+    return render_template('shift_open.html')
+
+
+@app.route('/shifts/<int:id>')
+@login_required
+def shift_detail(id):
+    shift = CashShift.query.get_or_404(id)
+    if shift.user_id != current_user.id and current_user.role not in ('admin', 'manager', 'developer'):
+        flash('لا صلاحية لعرض هذه الوردية', 'error')
+        return redirect(url_for('shifts'))
+    cash_sales_qs = Sale.query.filter_by(shift_id=shift.id, payment_method='cash').order_by(Sale.date.asc()).all()
+    other_sales_qs = Sale.query.filter(Sale.shift_id == shift.id, Sale.payment_method != 'cash').order_by(Sale.date.asc()).all()
+    expenses_qs = Expense.query.filter_by(shift_id=shift.id).order_by(Expense.date.asc()).all()
+    cash_sales_total = sum(float(s.paid or 0) for s in cash_sales_qs)
+    other_sales_total = sum(float(s.paid or 0) for s in other_sales_qs)
+    expenses_total = sum(float(e.amount or 0) for e in expenses_qs)
+    expected_now = float(shift.opening_balance or 0) + cash_sales_total - expenses_total
+    return render_template(
+        'shift_detail.html', shift=shift,
+        cash_sales=cash_sales_qs, other_sales=other_sales_qs, expenses=expenses_qs,
+        cash_sales_total=cash_sales_total, other_sales_total=other_sales_total,
+        expenses_total=expenses_total, expected_now=expected_now,
+    )
+
+
+@app.route('/shifts/<int:id>/close', methods=['POST'])
+@login_required
+def close_shift(id):
+    shift = CashShift.query.get_or_404(id)
+    if shift.user_id != current_user.id and current_user.role not in ('admin', 'manager', 'developer'):
+        flash('لا صلاحية لقفل هذه الوردية', 'error')
+        return redirect(url_for('shifts'))
+    if shift.status != 'open':
+        flash('الوردية دي مقفولة بالفعل', 'error')
+        return redirect(url_for('shift_detail', id=shift.id))
+    try:
+        actual_val = float(request.form.get('actual_cash') or 0)
+    except (TypeError, ValueError):
+        flash('قيمة الكاش الفعلي غير صحيحة', 'error')
+        return redirect(url_for('shift_detail', id=shift.id))
+    if actual_val < 0:
+        flash('قيمة الكاش الفعلي لا يمكن أن تكون سالبة', 'error')
+        return redirect(url_for('shift_detail', id=shift.id))
+    expected = compute_shift_expected_cash(shift)
+    shift.expected_cash = expected
+    shift.actual_cash = actual_val
+    shift.difference = actual_val - expected
+    shift.close_notes = request.form.get('close_notes')
+    shift.status = 'closed'
+    shift.closed_at = datetime.utcnow()
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash('حدث خطأ غير متوقع أثناء قفل الوردية — لم يتم حفظ أي بيانات', 'error')
+        return redirect(url_for('shift_detail', id=shift.id))
+    diff = shift.difference
+    if abs(diff) < 0.01:
+        flash(f'تم قفل الوردية {shift.shift_number} بنجاح — الكاش مطابق تمامًا', 'success')
+    elif diff > 0:
+        flash(f'تم قفل الوردية {shift.shift_number} — فيه زيادة قدرها {diff:,.2f}', 'warning')
+    else:
+        flash(f'تم قفل الوردية {shift.shift_number} — فيه عجز قدره {abs(diff):,.2f}', 'error')
+    return redirect(url_for('shift_detail', id=shift.id))
+
+
 @app.route('/sales')
 @login_required
 def sales():
@@ -2575,6 +2742,11 @@ def sales():
 @app.route('/sales/new', methods=['GET', 'POST'])
 @login_required
 def new_sale():
+    # ── إجبارية الوردية: لا بيع بدون وردية مفتوحة (مثل Square / Toast POS) ──
+    _current_shift = get_open_shift_for_user(current_user.id)
+    if not _current_shift:
+        flash('يجب فتح وردية أولاً قبل إجراء أي عملية بيع — اضغط على «فتح وردية جديدة» للمتابعة', 'error')
+        return redirect(url_for('open_shift'))
     if request.method == 'POST':
         customer_id = request.form.get('customer_id') or None
         warehouse_id = request.form.get('warehouse_id') or None
@@ -2616,6 +2788,11 @@ def new_sale():
             flash('يرجى إدخال المبلغ المدفوع أو تحديد "آجل" لحفظ الفاتورة', 'error')
             return redirect(url_for('new_sale'))
 
+        payment_method_val = (request.form.get('payment_method') or 'cash').strip().lower()
+        if payment_method_val not in ('cash', 'card', 'transfer', 'other'):
+            payment_method_val = 'cash'
+        _open_shift = get_open_shift_for_user(current_user.id)
+
         # Merge duplicated products into one line to prevent duplicate items per invoice.
         merged = {}
         for pid, qty, price, disc in lines_raw:
@@ -2653,6 +2830,8 @@ def new_sale():
                     customer_id=customer_id,
                     warehouse_id=warehouse_id,
                     user_id=current_user.id,
+                    shift_id=(_open_shift.id if _open_shift else None),
+                    payment_method=payment_method_val,
                     discount=total_discount_val,
                     tax=0,
                     paid=paid_val,
@@ -2904,6 +3083,8 @@ def edit_sale(id):
                 sale.tax = tax_form_val
             sale.total = subtotal - sale.discount + sale.tax
             sale.paid = paid_val
+            pm_val = (request.form.get('payment_method') or sale.payment_method or 'cash').strip().lower()
+            sale.payment_method = pm_val if pm_val in ('cash', 'card', 'transfer', 'other') else 'cash'
             new_remaining = sale.total - sale.paid
 
             # لا يمكن تقليل الفاتورة لأقل مما تم تحصيله فعلاً عبر كشف الحساب (دفعات مرتبطة بهذه
@@ -3805,7 +3986,8 @@ def add_expense():
             description=request.form.get('description'),
             amount=amount_val,
             branch_id=request.form.get('branch_id') or None,
-            user_id=current_user.id
+            user_id=current_user.id,
+            shift_id=(get_open_shift_for_user(current_user.id).id if get_open_shift_for_user(current_user.id) else None),
         )
         db.session.add(expense)
         try:

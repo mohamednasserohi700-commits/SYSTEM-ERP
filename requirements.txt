@@ -27,4 +27,6 @@ gunicorn==25.3.0
 # QR codes — بطاقات حضور الموظفين
 qrcode==8.2
 
-# PostgreSQL: لا يُثبّت هنا — راجع requirements-postgres.txt (قد يفشل على Python 3.14 بدون عجلة جاهزة)
+# PostgreSQL — لازم لـ Railway (يوفر DATABASE_URL من نوع postgresql://)
+# لو فشل تثبيتها على بيئة بايثون قديمة/غريبة، احذف السطر ده وارجع لاستخدام SQLite فقط
+psycopg2-binary==2.9.9
