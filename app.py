@@ -16,6 +16,7 @@ import shutil
 import threading
 import time as time_module
 from werkzeug.utils import secure_filename
+from sqlalchemy import event
 from sqlalchemy.engine.url import make_url
 
 app = Flask(__name__)
@@ -98,6 +99,25 @@ else:
 
 
 db = SQLAlchemy(app)
+
+# ── SQLite tuning: WAL + busy_timeout ────────────────────────
+# WAL بيسمح بالقراءة أثناء الكتابة (بدل ما الملف كله يتقفل وقت الحفظ)،
+# وbusy_timeout بيخلي أي عملية تستنى شوية بدل ما ترمي "database is locked"
+# فورًا لو اتزاحمت مع عملية تانية بتكتب في نفس اللحظة.
+# الاستماع على Engine نفسه (مش db.engine) عشان يشتغل من غير الحاجة لـ app context،
+# وبيغطي قاعدة البيانات الرئيسية وقواعد التراخيص (license_pool/license_used) مع بعض.
+from sqlalchemy.engine import Engine as _SAEngine
+
+
+@event.listens_for(_SAEngine, 'connect')
+def _set_sqlite_pragma(dbapi_connection, connection_record):
+    if 'sqlite3' in type(dbapi_connection).__module__:
+        cursor = dbapi_connection.cursor()
+        cursor.execute('PRAGMA journal_mode=WAL')
+        cursor.execute('PRAGMA busy_timeout=15000')  # 15 ثانية انتظار قبل الفشل
+        cursor.execute('PRAGMA synchronous=NORMAL')  # أداء أفضل مع WAL، بدون تضحية بأمان البيانات
+        cursor.close()
+
 login_manager = LoginManager(app)
 
 # ── Error logging (يظهر الخطأ كاملاً في السجلات) ──────────
@@ -247,33 +267,12 @@ class InvoiceEditLog(db.Model):
     user = db.relationship('User')
 
 
-class CashShift(db.Model):
-    """وردية كاشير: فتح الدرج برصيد افتتاحي، وقفله بجرد فعلي للكاش ومطابقته بالمتوقع."""
-    id = db.Column(db.Integer, primary_key=True)
-    shift_number = db.Column(db.String(50), unique=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'))
-    opened_at = db.Column(db.DateTime, default=datetime.utcnow)
-    closed_at = db.Column(db.DateTime, nullable=True)
-    opening_balance = db.Column(db.Float, default=0)
-    expected_cash = db.Column(db.Float, nullable=True)
-    actual_cash = db.Column(db.Float, nullable=True)
-    difference = db.Column(db.Float, nullable=True)
-    status = db.Column(db.String(20), default='open')  # open, closed
-    notes = db.Column(db.Text)
-    close_notes = db.Column(db.Text)
-    user = db.relationship('User', foreign_keys=[user_id])
-    branch = db.relationship('Branch')
-
-
 class Sale(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     invoice_number = db.Column(db.String(50), unique=True)
     customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'))
     warehouse_id = db.Column(db.Integer, db.ForeignKey('warehouse.id'))
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    shift_id = db.Column(db.Integer, db.ForeignKey('cash_shift.id'), nullable=True)
-    payment_method = db.Column(db.String(20), default='cash')  # cash, card, transfer, other
     date = db.Column(db.DateTime, default=datetime.utcnow)
     subtotal = db.Column(db.Float, default=0)
     discount = db.Column(db.Float, default=0)
@@ -286,7 +285,6 @@ class Sale(db.Model):
     items = db.relationship('SaleItem', backref='sale', lazy=True, cascade='all, delete-orphan')
     user = db.relationship('User')
     warehouse = db.relationship('Warehouse')
-    shift = db.relationship('CashShift', foreign_keys=[shift_id])
 
 class SaleItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -445,10 +443,8 @@ class Expense(db.Model):
     amount = db.Column(db.Float)
     branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'))
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    shift_id = db.Column(db.Integer, db.ForeignKey('cash_shift.id'), nullable=True)
     user = db.relationship('User')
     branch = db.relationship('Branch')
-    shift = db.relationship('CashShift', foreign_keys=[shift_id])
 
 class CustomerPayment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -512,7 +508,6 @@ def admin_required(f):
 PERMISSION_KEYS = [
     ('dashboard', 'لوحة التحكم'),
     ('sales', 'المبيعات'),
-    ('shifts', 'الورديات (فتح/قفل الكاش)'),
     ('purchases', 'المشتريات'),
     ('returns', 'المرتجعات'),
     ('inventory', 'المخزون والجرد'),
@@ -611,7 +606,7 @@ def user_can(user, perm: str) -> bool:
         return True
     if user.role == 'user':
         return perm in {
-            'dashboard', 'sales', 'shifts', 'purchases', 'returns', 'inventory', 'transfers',
+            'dashboard', 'sales', 'purchases', 'returns', 'inventory', 'transfers',
             'customers', 'suppliers', 'expenses', 'products', 'categories', 'reports',
         }
     if user.role in ('hr_manager', 'hr_officer', 'payroll_officer', 'department_manager', 'employee'):
@@ -654,7 +649,7 @@ def default_role_permission_set(role: str) -> set:
         return keys_all - MANAGER_DEFAULT_DENIED - DEVELOPER_ONLY_PERMS
     if role == 'user':
         return {
-            'dashboard', 'sales', 'shifts', 'purchases', 'returns', 'inventory', 'transfers',
+            'dashboard', 'sales', 'purchases', 'returns', 'inventory', 'transfers',
             'customers', 'suppliers', 'expenses', 'products', 'categories', 'reports',
         }
     if role in ('hr_manager', 'hr_officer', 'payroll_officer', 'department_manager', 'employee'):
@@ -998,7 +993,6 @@ def path_required_permission(path: str):
         ('/categories', 'categories'),
         ('/products', 'products'),
         ('/sales', 'sales'),
-        ('/shifts', 'shifts'),
         ('/purchases', 'purchases'),
         ('/reports', 'reports'),
         ('/about', 'dashboard'),
@@ -1161,6 +1155,110 @@ def erp_backup(tag='manual'):
     return None, 'نوع قاعدة البيانات غير مدعوم للنسخ الاحتياطي'
 
 
+def run_database_optimize():
+    """فحص وإصلاح الأداء: إضافة فهارس مفقودة + تحديث إحصائيات (ANALYZE) + تنظيف المساحة الفارغة (VACUUM).
+    آمن 100% على البيانات: لا يحذف ولا يعدّل أي صف موجود — كل ما بيعمله إضافي (فهارس)
+    أو تنظيمي بحت (ترتيب الملف واستعادة المساحة الفاضية من عمليات حذف قديمة)."""
+    uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    is_sqlite_db = 'sqlite' in uri
+    is_postgres_db = 'postgresql' in uri
+
+    # فهارس على الأعمدة اللي بتتفلتر/تتربط عليها كتير في التقارير والبحث
+    index_defs = [
+        ('idx_sale_date', 'sale', 'date'),
+        ('idx_sale_customer', 'sale', 'customer_id'),
+        ('idx_sale_warehouse', 'sale', 'warehouse_id'),
+        ('idx_sale_user', 'sale', 'user_id'),
+        ('idx_sale_item_sale', 'sale_item', 'sale_id'),
+        ('idx_sale_item_product', 'sale_item', 'product_id'),
+        ('idx_purchase_date', 'purchase', 'date'),
+        ('idx_purchase_supplier', 'purchase', 'supplier_id'),
+        ('idx_purchase_warehouse', 'purchase', 'warehouse_id'),
+        ('idx_purchase_item_purchase', 'purchase_item', 'purchase_id'),
+        ('idx_purchase_item_product', 'purchase_item', 'product_id'),
+        ('idx_sale_return_sale', 'sale_return', 'sale_id'),
+        ('idx_sale_return_date', 'sale_return', 'date'),
+        ('idx_sale_return_item_return', 'sale_return_item', 'return_id'),
+        ('idx_sale_return_item_product', 'sale_return_item', 'product_id'),
+        ('idx_purchase_return_purchase', 'purchase_return', 'purchase_id'),
+        ('idx_purchase_return_date', 'purchase_return', 'date'),
+        ('idx_purchase_return_item_return', 'purchase_return_item', 'return_id'),
+        ('idx_purchase_return_item_product', 'purchase_return_item', 'product_id'),
+        ('idx_stock_product', 'stock', 'product_id'),
+        ('idx_stock_warehouse', 'stock', 'warehouse_id'),
+        ('idx_stock_adj_product', 'stock_adjustment_log', 'product_id'),
+        ('idx_stock_adj_warehouse', 'stock_adjustment_log', 'warehouse_id'),
+        ('idx_stock_adj_created', 'stock_adjustment_log', 'created_at'),
+        ('idx_inv_memo_warehouse', 'inventory_memo', 'warehouse_id'),
+        ('idx_inv_memo_date', 'inventory_memo', 'date'),
+        ('idx_inv_memo_item_memo', 'inventory_memo_item', 'memo_id'),
+        ('idx_inv_memo_item_product', 'inventory_memo_item', 'product_id'),
+        ('idx_transfer_from_wh', 'transfer_request', 'from_warehouse_id'),
+        ('idx_transfer_to_wh', 'transfer_request', 'to_warehouse_id'),
+        ('idx_transfer_status', 'transfer_request', 'status'),
+        ('idx_transfer_date', 'transfer_request', 'date_requested'),
+        ('idx_transfer_item_transfer', 'transfer_item', 'transfer_id'),
+        ('idx_transfer_item_product', 'transfer_item', 'product_id'),
+        ('idx_expense_date', 'expense', 'date'),
+        ('idx_expense_branch', 'expense', 'branch_id'),
+        ('idx_cust_payment_customer', 'customer_payment', 'customer_id'),
+        ('idx_cust_payment_date', 'customer_payment', 'date'),
+        ('idx_sup_payment_supplier', 'supplier_payment', 'supplier_id'),
+        ('idx_sup_payment_date', 'supplier_payment', 'date'),
+        ('idx_product_barcode', 'product', 'barcode'),
+        ('idx_product_category', 'product', 'category_id'),
+        ('idx_customer_name', 'customer', 'name'),
+        ('idx_supplier_name', 'supplier', 'name'),
+        ('idx_employee_branch', 'employee', 'branch_id'),
+        ('idx_invoice_edit_log_ref', 'invoice_edit_log', 'invoice_id'),
+    ]
+
+    size_before = None
+    main_path = None
+    if is_sqlite_db:
+        main_path = resolve_sqlite_main_path()
+        if main_path and os.path.isfile(main_path):
+            size_before = os.path.getsize(main_path)
+
+    # نقفل أي جلسة/معاملة مفتوحة الأول، عشان VACUUM ما ينفعش يشتغل جوه معاملة
+    db.session.remove()
+
+    t0 = time_module.time()
+    indexes_created = 0
+    indexes_skipped = 0
+
+    raw_conn = db.engine.raw_connection()
+    try:
+        if is_sqlite_db:
+            raw_conn.isolation_level = None  # autocommit — كل أمر بيتنفذ وينحفظ فورًا
+        else:
+            raw_conn.autocommit = True
+        cur = raw_conn.cursor()
+        for idx_name, table, col in index_defs:
+            try:
+                cur.execute(f'CREATE INDEX IF NOT EXISTS {idx_name} ON {table} ({col})')
+                indexes_created += 1
+            except Exception:
+                indexes_skipped += 1
+        cur.execute('ANALYZE')
+        cur.execute('VACUUM')
+        cur.close()
+    finally:
+        raw_conn.close()
+
+    size_after = None
+    if is_sqlite_db and main_path and os.path.isfile(main_path):
+        size_after = os.path.getsize(main_path)
+
+    return {
+        'indexes_created': indexes_created,
+        'indexes_skipped': indexes_skipped,
+        'size_before': size_before,
+        'size_after': size_after,
+        'duration': time_module.time() - t0,
+    }
+
+
 def sqlite_backup_to_folder(tag='manual'):
     """للتوافق مع الكود القديم — يستخدم erp_backup داخلياً."""
     dest, err = erp_backup(tag)
@@ -1242,19 +1340,6 @@ def ensure_schema():
             if 'withholding_tax' not in pcols:
                 with db.engine.begin() as conn:
                     conn.execute(text('ALTER TABLE purchase ADD COLUMN withholding_tax FLOAT DEFAULT 0'))
-        if 'sale' in tables:
-            scols = {c['name'] for c in insp.get_columns('sale')}
-            if 'shift_id' not in scols:
-                with db.engine.begin() as conn:
-                    conn.execute(text('ALTER TABLE sale ADD COLUMN shift_id INTEGER'))
-            if 'payment_method' not in scols:
-                with db.engine.begin() as conn:
-                    conn.execute(text("ALTER TABLE sale ADD COLUMN payment_method VARCHAR(20) DEFAULT 'cash'"))
-        if 'expense' in tables:
-            excols = {c['name'] for c in insp.get_columns('expense')}
-            if 'shift_id' not in excols:
-                with db.engine.begin() as conn:
-                    conn.execute(text('ALTER TABLE expense ADD COLUMN shift_id INTEGER'))
         if 'user' in tables:
             ucols = {c['name'] for c in insp.get_columns('user')}
             utbl = '"user"' if insp.bind.dialect.name == 'postgresql' else 'user'
@@ -1397,22 +1482,6 @@ def get_next_number(prefix, model, field):
     return f"{prefix}{num:06d}"
 
 
-def get_open_shift_for_user(user_id):
-    """الوردية المفتوحة حالياً لهذا المستخدم (لو فيه)."""
-    if not user_id:
-        return None
-    return CashShift.query.filter_by(user_id=user_id, status='open').first()
-
-
-def compute_shift_expected_cash(shift):
-    """الكاش المتوقع في الدرج = الرصيد الافتتاحي + مبيعات كاش أثناء الوردية - مصاريف أثناء الوردية."""
-    cash_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.paid), 0.0)) \
-        .filter(Sale.shift_id == shift.id, Sale.payment_method == 'cash').scalar() or 0.0
-    shift_expenses = db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0.0)) \
-        .filter(Expense.shift_id == shift.id).scalar() or 0.0
-    return float(shift.opening_balance or 0) + float(cash_sales) - float(shift_expenses)
-
-
 def allocate_entity_code(prefix: str, model, field_name='code'):
     """كود تلقائي فريد (عملاء C، موردين S، موظفين E، أصناف P، …)."""
     max_id = db.session.query(db.func.max(model.id)).scalar() or 0
@@ -1541,7 +1610,6 @@ def inject_globals():
         license_expiry_message_text=(get_app_settings_dict(branch_id=None).get('license_expiry_message') or DEFAULT_SETTINGS.get('license_expiry_message', '')),
         current_branch_id=bid,
         can_delete_users=user_can_delete_users_account(current_user) if current_user.is_authenticated else False,
-        current_open_shift=get_open_shift_for_user(current_user.id) if current_user.is_authenticated else None,
     )
 
 
@@ -2134,6 +2202,134 @@ def customer_statement(id):
     return render_template('customer_statement.html', customer=customer, sales=sales, 
                            payments=payments, returns=returns, open_invoices=open_invoices)
 
+@app.route('/customers/<int:id>/statement/detailed')
+@login_required
+def customer_statement_detailed(id):
+    customer = Customer.query.get_or_404(id)
+    date_from = request.args.get('date_from', date.today().replace(day=1).isoformat())
+    date_to = request.args.get('date_to', date.today().isoformat())
+
+    sale_rows = db.session.query(SaleItem, Sale).join(Sale, SaleItem.sale_id == Sale.id).filter(
+        Sale.customer_id == id,
+        db.func.date(Sale.date).between(date_from, date_to)
+    ).order_by(Sale.date.asc()).all()
+
+    return_rows = db.session.query(SaleReturnItem, SaleReturn, Sale).join(
+        SaleReturn, SaleReturnItem.return_id == SaleReturn.id
+    ).join(Sale, SaleReturn.sale_id == Sale.id).filter(
+        Sale.customer_id == id,
+        db.func.date(SaleReturn.date).between(date_from, date_to)
+    ).order_by(SaleReturn.date.asc()).all()
+
+    rows = []
+    for si, sale in sale_rows:
+        rows.append({
+            'date': sale.date, 'invoice_number': sale.invoice_number, 'sale_id': sale.id,
+            'type': 'sale', 'type_label': 'بيع',
+            'product': si.product.name if si.product else '—',
+            'unit': si.product.unit if si.product else '',
+            'qty': si.quantity or 0, 'price': si.price or 0, 'total': si.total or 0,
+        })
+    for ri, ret, sale in return_rows:
+        rows.append({
+            'date': ret.date, 'invoice_number': ret.invoice_number, 'sale_id': sale.id,
+            'type': 'return', 'type_label': 'مرتجع بيع',
+            'product': ri.product.name if ri.product else '—',
+            'unit': ri.product.unit if ri.product else '',
+            'qty': ri.quantity or 0, 'price': ri.price or 0, 'total': -(ri.total or 0),
+        })
+    rows.sort(key=lambda r: r['date'])
+
+    products_summary = defaultdict(lambda: {'qty': 0.0, 'total': 0.0, 'unit': ''})
+    for r in rows:
+        agg = products_summary[r['product']]
+        agg['unit'] = r['unit']
+        if r['type'] == 'sale':
+            agg['qty'] += r['qty']
+        else:
+            agg['qty'] -= r['qty']
+        agg['total'] += r['total']
+    products_summary = dict(sorted(products_summary.items(), key=lambda kv: -kv[1]['total']))
+
+    grand_total = sum(r['total'] for r in rows)
+    grand_qty = sum(r['qty'] if r['type'] == 'sale' else -r['qty'] for r in rows)
+
+    return render_template(
+        'customer_statement_detailed.html', customer=customer, rows=rows,
+        products_summary=products_summary, grand_total=grand_total, grand_qty=grand_qty,
+        date_from=date_from, date_to=date_to)
+
+@app.route('/customers/<int:id>/statement/detailed/print')
+@login_required
+def customer_statement_detailed_print(id):
+    customer = Customer.query.get_or_404(id)
+    date_from = request.args.get('date_from', date.today().replace(day=1).isoformat())
+    date_to = request.args.get('date_to', date.today().isoformat())
+
+    sale_rows = db.session.query(SaleItem, Sale).join(Sale, SaleItem.sale_id == Sale.id).filter(
+        Sale.customer_id == id,
+        db.func.date(Sale.date).between(date_from, date_to)
+    ).order_by(Sale.date.asc()).all()
+
+    return_rows = db.session.query(SaleReturnItem, SaleReturn, Sale).join(
+        SaleReturn, SaleReturnItem.return_id == SaleReturn.id
+    ).join(Sale, SaleReturn.sale_id == Sale.id).filter(
+        Sale.customer_id == id,
+        db.func.date(SaleReturn.date).between(date_from, date_to)
+    ).order_by(SaleReturn.date.asc()).all()
+
+    rows = []
+    for si, sale in sale_rows:
+        rows.append({
+            'date': sale.date, 'invoice_number': sale.invoice_number,
+            'type': 'sale', 'type_label': 'بيع',
+            'product': si.product.name if si.product else '—',
+            'unit': si.product.unit if si.product else '',
+            'qty': si.quantity or 0, 'price': si.price or 0, 'total': si.total or 0,
+        })
+    for ri, ret, sale in return_rows:
+        rows.append({
+            'date': ret.date, 'invoice_number': ret.invoice_number,
+            'type': 'return', 'type_label': 'مرتجع بيع',
+            'product': ri.product.name if ri.product else '—',
+            'unit': ri.product.unit if ri.product else '',
+            'qty': ri.quantity or 0, 'price': ri.price or 0, 'total': -(ri.total or 0),
+        })
+    rows.sort(key=lambda r: r['date'])
+
+    products_summary = defaultdict(lambda: {'qty': 0.0, 'total': 0.0, 'unit': ''})
+    for r in rows:
+        agg = products_summary[r['product']]
+        agg['unit'] = r['unit']
+        if r['type'] == 'sale':
+            agg['qty'] += r['qty']
+        else:
+            agg['qty'] -= r['qty']
+        agg['total'] += r['total']
+    products_summary = dict(sorted(products_summary.items(), key=lambda kv: -kv[1]['total']))
+
+    grand_total = sum(r['total'] for r in rows)
+    grand_qty = sum(r['qty'] if r['type'] == 'sale' else -r['qty'] for r in rows)
+
+    gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
+    copies_raw = gs.get('print_auto_copies') or '1'
+    try:
+        copies = int(float(copies_raw))
+    except Exception:
+        copies = 1
+    copies = max(1, min(copies, 10))
+    return render_template(
+        'customer_statement_detailed_print.html',
+        customer=customer, rows=rows, products_summary=products_summary,
+        grand_total=grand_total, grand_qty=grand_qty,
+        date_from=date_from, date_to=date_to,
+        print_mode=(gs.get('print_mode') or 'normal'),
+        print_paper_size=(gs.get('print_paper_size') or 'A4'),
+        print_auto_copies=copies,
+        auto_print_requested=(request.args.get('autoprint') == '1'),
+        printed_at=datetime.now(),
+    )
+
 @app.route('/customers/<int:id>/statement/print')
 @login_required
 def customer_statement_print(id):
@@ -2356,117 +2552,6 @@ def add_supplier():
     return render_template('supplier_form.html', suggested_code=suggested)
 
 # ===== SALES =====
-@app.route('/shifts')
-@login_required
-def shifts():
-    q = CashShift.query.order_by(CashShift.opened_at.desc())
-    if current_user.role not in ('admin', 'manager', 'developer'):
-        q = q.filter(CashShift.user_id == current_user.id)
-    page = request.args.get('page', 1, type=int)
-    shifts_page = q.paginate(page=page, per_page=20)
-    my_open_shift = get_open_shift_for_user(current_user.id)
-    return render_template('shifts.html', shifts=shifts_page, my_open_shift=my_open_shift)
-
-
-@app.route('/shifts/open', methods=['GET', 'POST'])
-@login_required
-def open_shift():
-    existing = get_open_shift_for_user(current_user.id)
-    if existing:
-        flash('لديك وردية مفتوحة بالفعل — يجب قفلها أولاً قبل فتح وردية جديدة', 'error')
-        return redirect(url_for('shift_detail', id=existing.id))
-    if request.method == 'POST':
-        try:
-            opening_val = float(request.form.get('opening_balance') or 0)
-        except (TypeError, ValueError):
-            flash('الرصيد الافتتاحي غير صحيح', 'error')
-            return redirect(url_for('open_shift'))
-        if opening_val < 0:
-            flash('الرصيد الافتتاحي لا يمكن أن يكون سالباً', 'error')
-            return redirect(url_for('open_shift'))
-        shift = CashShift(
-            shift_number=get_next_number('SFT', CashShift, 'shift_number'),
-            user_id=current_user.id,
-            branch_id=getattr(current_user, 'branch_id', None),
-            opening_balance=opening_val,
-            notes=request.form.get('notes'),
-            status='open',
-        )
-        db.session.add(shift)
-        try:
-            db.session.commit()
-        except SQLAlchemyError:
-            db.session.rollback()
-            flash('حدث خطأ غير متوقع أثناء فتح الوردية — لم يتم حفظ أي بيانات', 'error')
-            return redirect(url_for('open_shift'))
-        flash(f'تم فتح الوردية {shift.shift_number} بنجاح — بالتوفيق!', 'success')
-        return redirect(url_for('shift_detail', id=shift.id))
-    return render_template('shift_open.html')
-
-
-@app.route('/shifts/<int:id>')
-@login_required
-def shift_detail(id):
-    shift = CashShift.query.get_or_404(id)
-    if shift.user_id != current_user.id and current_user.role not in ('admin', 'manager', 'developer'):
-        flash('لا صلاحية لعرض هذه الوردية', 'error')
-        return redirect(url_for('shifts'))
-    cash_sales_qs = Sale.query.filter_by(shift_id=shift.id, payment_method='cash').order_by(Sale.date.asc()).all()
-    other_sales_qs = Sale.query.filter(Sale.shift_id == shift.id, Sale.payment_method != 'cash').order_by(Sale.date.asc()).all()
-    expenses_qs = Expense.query.filter_by(shift_id=shift.id).order_by(Expense.date.asc()).all()
-    cash_sales_total = sum(float(s.paid or 0) for s in cash_sales_qs)
-    other_sales_total = sum(float(s.paid or 0) for s in other_sales_qs)
-    expenses_total = sum(float(e.amount or 0) for e in expenses_qs)
-    expected_now = float(shift.opening_balance or 0) + cash_sales_total - expenses_total
-    return render_template(
-        'shift_detail.html', shift=shift,
-        cash_sales=cash_sales_qs, other_sales=other_sales_qs, expenses=expenses_qs,
-        cash_sales_total=cash_sales_total, other_sales_total=other_sales_total,
-        expenses_total=expenses_total, expected_now=expected_now,
-    )
-
-
-@app.route('/shifts/<int:id>/close', methods=['POST'])
-@login_required
-def close_shift(id):
-    shift = CashShift.query.get_or_404(id)
-    if shift.user_id != current_user.id and current_user.role not in ('admin', 'manager', 'developer'):
-        flash('لا صلاحية لقفل هذه الوردية', 'error')
-        return redirect(url_for('shifts'))
-    if shift.status != 'open':
-        flash('الوردية دي مقفولة بالفعل', 'error')
-        return redirect(url_for('shift_detail', id=shift.id))
-    try:
-        actual_val = float(request.form.get('actual_cash') or 0)
-    except (TypeError, ValueError):
-        flash('قيمة الكاش الفعلي غير صحيحة', 'error')
-        return redirect(url_for('shift_detail', id=shift.id))
-    if actual_val < 0:
-        flash('قيمة الكاش الفعلي لا يمكن أن تكون سالبة', 'error')
-        return redirect(url_for('shift_detail', id=shift.id))
-    expected = compute_shift_expected_cash(shift)
-    shift.expected_cash = expected
-    shift.actual_cash = actual_val
-    shift.difference = actual_val - expected
-    shift.close_notes = request.form.get('close_notes')
-    shift.status = 'closed'
-    shift.closed_at = datetime.utcnow()
-    try:
-        db.session.commit()
-    except SQLAlchemyError:
-        db.session.rollback()
-        flash('حدث خطأ غير متوقع أثناء قفل الوردية — لم يتم حفظ أي بيانات', 'error')
-        return redirect(url_for('shift_detail', id=shift.id))
-    diff = shift.difference
-    if abs(diff) < 0.01:
-        flash(f'تم قفل الوردية {shift.shift_number} بنجاح — الكاش مطابق تمامًا', 'success')
-    elif diff > 0:
-        flash(f'تم قفل الوردية {shift.shift_number} — فيه زيادة قدرها {diff:,.2f}', 'warning')
-    else:
-        flash(f'تم قفل الوردية {shift.shift_number} — فيه عجز قدره {abs(diff):,.2f}', 'error')
-    return redirect(url_for('shift_detail', id=shift.id))
-
-
 @app.route('/sales')
 @login_required
 def sales():
@@ -2490,11 +2575,6 @@ def sales():
 @app.route('/sales/new', methods=['GET', 'POST'])
 @login_required
 def new_sale():
-    # ── إجبارية الوردية: لا بيع بدون وردية مفتوحة (مثل Square / Toast POS) ──
-    _current_shift = get_open_shift_for_user(current_user.id)
-    if not _current_shift:
-        flash('يجب فتح وردية أولاً قبل إجراء أي عملية بيع — اضغط على «فتح وردية جديدة» للمتابعة', 'error')
-        return redirect(url_for('open_shift'))
     if request.method == 'POST':
         customer_id = request.form.get('customer_id') or None
         warehouse_id = request.form.get('warehouse_id') or None
@@ -2536,11 +2616,6 @@ def new_sale():
             flash('يرجى إدخال المبلغ المدفوع أو تحديد "آجل" لحفظ الفاتورة', 'error')
             return redirect(url_for('new_sale'))
 
-        payment_method_val = (request.form.get('payment_method') or 'cash').strip().lower()
-        if payment_method_val not in ('cash', 'card', 'transfer', 'other'):
-            payment_method_val = 'cash'
-        _open_shift = get_open_shift_for_user(current_user.id)
-
         # Merge duplicated products into one line to prevent duplicate items per invoice.
         merged = {}
         for pid, qty, price, disc in lines_raw:
@@ -2578,8 +2653,6 @@ def new_sale():
                     customer_id=customer_id,
                     warehouse_id=warehouse_id,
                     user_id=current_user.id,
-                    shift_id=(_open_shift.id if _open_shift else None),
-                    payment_method=payment_method_val,
                     discount=total_discount_val,
                     tax=0,
                     paid=paid_val,
@@ -2831,8 +2904,6 @@ def edit_sale(id):
                 sale.tax = tax_form_val
             sale.total = subtotal - sale.discount + sale.tax
             sale.paid = paid_val
-            pm_val = (request.form.get('payment_method') or sale.payment_method or 'cash').strip().lower()
-            sale.payment_method = pm_val if pm_val in ('cash', 'card', 'transfer', 'other') else 'cash'
             new_remaining = sale.total - sale.paid
 
             # لا يمكن تقليل الفاتورة لأقل مما تم تحصيله فعلاً عبر كشف الحساب (دفعات مرتبطة بهذه
@@ -3734,8 +3805,7 @@ def add_expense():
             description=request.form.get('description'),
             amount=amount_val,
             branch_id=request.form.get('branch_id') or None,
-            user_id=current_user.id,
-            shift_id=(get_open_shift_for_user(current_user.id).id if get_open_shift_for_user(current_user.id) else None),
+            user_id=current_user.id
         )
         db.session.add(expense)
         try:
@@ -4286,6 +4356,34 @@ def database_backup_now():
         flash(f'تم إنشاء نسخة احتياطية: {os.path.basename(out)}', 'success')
     else:
         flash(f'تعذّر النسخ الاحتياطي: {err or "خطأ غير معروف"}', 'error')
+    return redirect(url_for('database_admin'))
+
+
+@app.route('/settings/database/optimize', methods=['POST'])
+@login_required
+def database_optimize():
+    # متاحة للمطور والأدمن فقط (أدق من admin_required اللي بيسمح للمدير كمان)
+    if not current_user.is_authenticated or current_user.role not in ('admin', 'developer'):
+        flash('هذه الميزة متاحة فقط للمطور والأدمن', 'error')
+        return redirect(safe_home_url_for(current_user))
+
+    backup_path, backup_err = erp_backup('before_optimize')
+    if not backup_path:
+        flash(f'تم إيقاف العملية لأن أخذ نسخة احتياطية أولاً فشل: {backup_err or "خطأ غير معروف"} — لم يتم تعديل أي شيء', 'error')
+        return redirect(url_for('database_admin'))
+
+    try:
+        result = run_database_optimize()
+    except Exception as ex:
+        flash(f'حدث خطأ أثناء الفحص والإصلاح: {str(ex)[:200]} — لا داعي للقلق، بياناتك سليمة ومحفوظة نسخة احتياطية قبل البدء ({os.path.basename(backup_path)})', 'error')
+        return redirect(url_for('database_admin'))
+
+    msg = f'تم الفحص والإصلاح بنجاح — {result["indexes_created"]} فهرس تم التأكد منه، خلال {result["duration"]:.1f} ثانية.'
+    if result['size_before'] is not None and result['size_after'] is not None:
+        saved = result['size_before'] - result['size_after']
+        if saved > 0:
+            msg += f' تم توفير {saved / 1024 / 1024:.2f} ميجابايت من المساحة.'
+    flash(msg, 'success')
     return redirect(url_for('database_admin'))
 
 
@@ -5009,6 +5107,134 @@ def supplier_statement(id):
     payments = SupplierPayment.query.filter_by(supplier_id=id).order_by(SupplierPayment.date.desc()).all()
     open_invoices = _supplier_open_invoices(id)
     return render_template('supplier_statement.html', supplier=supplier, purchases=purchases, payments=payments, open_invoices=open_invoices)
+
+@app.route('/suppliers/<int:id>/statement/detailed')
+@login_required
+def supplier_statement_detailed(id):
+    supplier = Supplier.query.get_or_404(id)
+    date_from = request.args.get('date_from', date.today().replace(day=1).isoformat())
+    date_to = request.args.get('date_to', date.today().isoformat())
+
+    purchase_rows = db.session.query(PurchaseItem, Purchase).join(Purchase, PurchaseItem.purchase_id == Purchase.id).filter(
+        Purchase.supplier_id == id,
+        db.func.date(Purchase.date).between(date_from, date_to)
+    ).order_by(Purchase.date.asc()).all()
+
+    return_rows = db.session.query(PurchaseReturnItem, PurchaseReturn, Purchase).join(
+        PurchaseReturn, PurchaseReturnItem.return_id == PurchaseReturn.id
+    ).join(Purchase, PurchaseReturn.purchase_id == Purchase.id).filter(
+        Purchase.supplier_id == id,
+        db.func.date(PurchaseReturn.date).between(date_from, date_to)
+    ).order_by(PurchaseReturn.date.asc()).all()
+
+    rows = []
+    for pi, purchase in purchase_rows:
+        rows.append({
+            'date': purchase.date, 'invoice_number': purchase.invoice_number, 'purchase_id': purchase.id,
+            'type': 'purchase', 'type_label': 'شراء',
+            'product': pi.product.name if pi.product else '—',
+            'unit': pi.product.unit if pi.product else '',
+            'qty': pi.quantity or 0, 'price': pi.price or 0, 'total': pi.total or 0,
+        })
+    for ri, ret, purchase in return_rows:
+        rows.append({
+            'date': ret.date, 'invoice_number': ret.invoice_number, 'purchase_id': purchase.id,
+            'type': 'return', 'type_label': 'مرتجع شراء',
+            'product': ri.product.name if ri.product else '—',
+            'unit': ri.product.unit if ri.product else '',
+            'qty': ri.quantity or 0, 'price': ri.price or 0, 'total': -(ri.total or 0),
+        })
+    rows.sort(key=lambda r: r['date'])
+
+    products_summary = defaultdict(lambda: {'qty': 0.0, 'total': 0.0, 'unit': ''})
+    for r in rows:
+        agg = products_summary[r['product']]
+        agg['unit'] = r['unit']
+        if r['type'] == 'purchase':
+            agg['qty'] += r['qty']
+        else:
+            agg['qty'] -= r['qty']
+        agg['total'] += r['total']
+    products_summary = dict(sorted(products_summary.items(), key=lambda kv: -kv[1]['total']))
+
+    grand_total = sum(r['total'] for r in rows)
+    grand_qty = sum(r['qty'] if r['type'] == 'purchase' else -r['qty'] for r in rows)
+
+    return render_template(
+        'supplier_statement_detailed.html', supplier=supplier, rows=rows,
+        products_summary=products_summary, grand_total=grand_total, grand_qty=grand_qty,
+        date_from=date_from, date_to=date_to)
+
+@app.route('/suppliers/<int:id>/statement/detailed/print')
+@login_required
+def supplier_statement_detailed_print(id):
+    supplier = Supplier.query.get_or_404(id)
+    date_from = request.args.get('date_from', date.today().replace(day=1).isoformat())
+    date_to = request.args.get('date_to', date.today().isoformat())
+
+    purchase_rows = db.session.query(PurchaseItem, Purchase).join(Purchase, PurchaseItem.purchase_id == Purchase.id).filter(
+        Purchase.supplier_id == id,
+        db.func.date(Purchase.date).between(date_from, date_to)
+    ).order_by(Purchase.date.asc()).all()
+
+    return_rows = db.session.query(PurchaseReturnItem, PurchaseReturn, Purchase).join(
+        PurchaseReturn, PurchaseReturnItem.return_id == PurchaseReturn.id
+    ).join(Purchase, PurchaseReturn.purchase_id == Purchase.id).filter(
+        Purchase.supplier_id == id,
+        db.func.date(PurchaseReturn.date).between(date_from, date_to)
+    ).order_by(PurchaseReturn.date.asc()).all()
+
+    rows = []
+    for pi, purchase in purchase_rows:
+        rows.append({
+            'date': purchase.date, 'invoice_number': purchase.invoice_number,
+            'type': 'purchase', 'type_label': 'شراء',
+            'product': pi.product.name if pi.product else '—',
+            'unit': pi.product.unit if pi.product else '',
+            'qty': pi.quantity or 0, 'price': pi.price or 0, 'total': pi.total or 0,
+        })
+    for ri, ret, purchase in return_rows:
+        rows.append({
+            'date': ret.date, 'invoice_number': ret.invoice_number,
+            'type': 'return', 'type_label': 'مرتجع شراء',
+            'product': ri.product.name if ri.product else '—',
+            'unit': ri.product.unit if ri.product else '',
+            'qty': ri.quantity or 0, 'price': ri.price or 0, 'total': -(ri.total or 0),
+        })
+    rows.sort(key=lambda r: r['date'])
+
+    products_summary = defaultdict(lambda: {'qty': 0.0, 'total': 0.0, 'unit': ''})
+    for r in rows:
+        agg = products_summary[r['product']]
+        agg['unit'] = r['unit']
+        if r['type'] == 'purchase':
+            agg['qty'] += r['qty']
+        else:
+            agg['qty'] -= r['qty']
+        agg['total'] += r['total']
+    products_summary = dict(sorted(products_summary.items(), key=lambda kv: -kv[1]['total']))
+
+    grand_total = sum(r['total'] for r in rows)
+    grand_qty = sum(r['qty'] if r['type'] == 'purchase' else -r['qty'] for r in rows)
+
+    gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
+    copies_raw = gs.get('print_auto_copies') or '1'
+    try:
+        copies = int(float(copies_raw))
+    except Exception:
+        copies = 1
+    copies = max(1, min(copies, 10))
+    return render_template(
+        'supplier_statement_detailed_print.html',
+        supplier=supplier, rows=rows, products_summary=products_summary,
+        grand_total=grand_total, grand_qty=grand_qty,
+        date_from=date_from, date_to=date_to,
+        print_mode=(gs.get('print_mode') or 'normal'),
+        print_paper_size=(gs.get('print_paper_size') or 'A4'),
+        print_auto_copies=copies,
+        auto_print_requested=(request.args.get('autoprint') == '1'),
+        printed_at=datetime.now(),
+    )
 
 @app.route('/suppliers/<int:id>/statement/print')
 @login_required
