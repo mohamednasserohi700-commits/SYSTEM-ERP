@@ -3,6 +3,7 @@
 {% block title %}كشف حساب {{ customer.name }}{% endblock %}
 {% block page_title %}كشف حساب: {{ customer.name }}{% endblock %}
 {% block topbar_actions %}
+<a href="{{ url_for('customer_statement_detailed', id=customer.id) }}" class="btn btn-outline"><i class="fas fa-list-alt"></i> كشف تفصيلي</a>
 <a href="{{ url_for('customer_statement_print', id=customer.id) }}" target="_blank" class="btn btn-outline"><i class="fas fa-print"></i> طباعة</a>
 <a href="{{ url_for('customers') }}" class="btn btn-outline"><i class="fas fa-arrow-right"></i> رجوع</a>
 {% endblock %}
@@ -76,69 +77,22 @@
 <div class="card">
 <div class="card-header"><div class="card-title"><i class="fas fa-money-bill"></i> تسجيل حركة</div></div>
 <div class="card-body">
-<form method="POST" action="{{ url_for('customer_payment',id=customer.id) }}" id="txnForm">
+<form method="POST" action="{{ url_for('customer_payment',id=customer.id) }}">
 <div class="form-group">
   <label class="form-label">نوع الحركة</label>
-  <select name="entry_type" id="entryType" class="form-control" onchange="onEntryTypeChange()">
+  <select name="entry_type" class="form-control">
     <option value="payment">دفعة من العميل (يسدد لنا)</option>
     <option value="debit">إضافة على الحساب (العميل عليه)</option>
     <option value="credit">رصيد دائن (العميل له)</option>
-      <option value="invoice">تسديد فاتورة معيّنة</option>
   </select>
-</div>
-<div class="form-group" id="invoiceSelectGroup" style="display:none;">
-  <label class="form-label">الفاتورة</label>
-  <select name="invoice_number" id="invoiceSelect" class="form-control" onchange="onInvoiceChange()">
-    <option value="">اختر رقم الفاتورة...</option>
-    {% for inv in open_invoices %}
-    <option value="{{ inv.invoice_number }}" data-remaining="{{ inv.actual_remaining }}">{{ inv.invoice_number }} — متبقي {{ "{:,.2f}".format(inv.actual_remaining) }}</option>
-    {% endfor %}
-  </select>
-  {% if not open_invoices %}<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">لا توجد فواتير غير مسددة لهذا العميل.</div>{% endif %}
 </div>
 <div class="form-group">
   <label class="form-label">المبلغ</label>
-  <input type="number" name="amount" id="txnAmount" class="form-control" step="0.01" required>
-  <div id="paymentHint" style="font-size:11px;color:var(--text-muted);margin-top:6px;">يمكن إدخال مبلغ سالب مثل <b>-1000</b> بمعنى العميل مدين لنا، ثم تسويته لاحقاً بدفعة.</div>
+  <input type="number" name="amount" class="form-control" step="0.01" required>
+  <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">يمكن إدخال مبلغ سالب مثل <b>-1000</b> بمعنى العميل مدين لنا، ثم تسويته لاحقاً بدفعة.</div>
 </div>
 <div class="form-group"><label class="form-label">ملاحظات</label><input type="text" name="notes" class="form-control"></div>
 <button type="submit" class="btn btn-success" style="width:100%;"><i class="fas fa-check"></i> تسجيل الحركة</button>
 </form></div></div>
 </div></div>
-{% endblock %}
-
-{% block extra_scripts %}
-<script>
-function onEntryTypeChange() {
-  var type = document.getElementById('entryType').value;
-  var invGroup = document.getElementById('invoiceSelectGroup');
-  var invSelect = document.getElementById('invoiceSelect');
-  var hint = document.getElementById('paymentHint');
-  var amount = document.getElementById('txnAmount');
-  if (type === 'invoice') {
-    invGroup.style.display = '';
-    invSelect.required = true;
-    hint.textContent = 'اختر الفاتورة أعلاه؛ سيُملأ المبلغ تلقائياً بالمتبقي الفعلي عليها ولن يمكن تجاوزه.';
-    onInvoiceChange();
-  } else {
-    invGroup.style.display = 'none';
-    invSelect.required = false;
-    amount.removeAttribute('max');
-    hint.textContent = 'يمكن إدخال مبلغ سالب مثل -1000 بمعنى العميل مدين لنا، ثم تسويته لاحقاً بدفعة.';
-  }
-}
-function onInvoiceChange() {
-  var invSelect = document.getElementById('invoiceSelect');
-  var amount = document.getElementById('txnAmount');
-  var opt = invSelect.options[invSelect.selectedIndex];
-  var remaining = opt ? opt.getAttribute('data-remaining') : null;
-  if (remaining) {
-    amount.value = remaining;
-    amount.max = remaining;
-  } else {
-    amount.value = '';
-    amount.removeAttribute('max');
-  }
-}
-</script>
 {% endblock %}
