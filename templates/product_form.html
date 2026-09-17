@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
 {% set block_icon = 'fas fa-barcode' %}
 {% block title %}{{ 'تعديل' if product else 'إضافة' }} صنف{% endblock %}
 {% block page_title %}{{ 'تعديل' if product else 'إضافة' }} صنف{% endblock %}
@@ -49,7 +49,7 @@
                 <div class="form-group">
                     <label class="form-label">الوحدة</label>
                     <select name="unit" class="form-control">
-                        {% for u in ['قطعة','كيلو','طبق كبير','طبق صغير','كرتون','علبة','كيس'] %}
+                        {% for u in ['قطعة','كيلو','طبق كبير','طبق صغير','كرتون','علبة','كيس','طبق','جركن','بستلة'] %}
                         <option {{ 'selected' if product and product.unit == u }}>{{ u }}</option>
                         {% endfor %}
                     </select>
@@ -73,6 +73,9 @@
             </div>
             <div style="display:flex; gap:10px;">
                 <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> حفظ</button>
+                {% if product %}
+                <a href="{{ url_for('barcode_labels', product_id=product.id) }}" class="btn btn-outline"><i class="fas fa-barcode"></i> طباعة باركود</a>
+                {% endif %}
                 <a href="{{ url_for('products') }}" class="btn btn-outline">إلغاء</a>
             </div>
         </form>
