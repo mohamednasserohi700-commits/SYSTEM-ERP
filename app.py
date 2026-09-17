@@ -318,6 +318,26 @@ class SaleItem(db.Model):
     total = db.Column(db.Float)
     product = db.relationship('Product')
 
+
+class HeldSale(db.Model):
+    """فاتورة بيع معلّقة مؤقتاً (Hold/Park Sale) — مسودة قبل السداد، لا تخصم من المخزون
+    ولا تُرقّم برقم فاتورة رسمي إلا بعد استرجاعها وحفظها فعلياً."""
+    id = db.Column(db.Integer, primary_key=True)
+    hold_number = db.Column(db.String(20), unique=True, nullable=False)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'))
+    warehouse_id = db.Column(db.Integer, db.ForeignKey('warehouse.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'))
+    notes = db.Column(db.Text)
+    total_discount = db.Column(db.Float, default=0)
+    tax = db.Column(db.Float, default=0)
+    items_json = db.Column(db.Text, nullable=False)  # [{product_id, quantity, price, discount}, ...]
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    customer = db.relationship('Customer')
+    warehouse = db.relationship('Warehouse')
+    user = db.relationship('User')
+
+
 class Purchase(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     invoice_number = db.Column(db.String(50), unique=True)
@@ -2034,43 +2054,159 @@ def delete_product(id):
     flash('تم حذف الصنف وإزالة أرصدته من المخازن', 'success')
     return redirect(url_for('products'))
 
-@app.route('/api/product/<int:id>')
+
+# ===== BARCODE LABEL PRINTING (طباعة ملصقات باركود) =====
+
+BARCODE_LABEL_SIZE_PRESETS = {
+    '40x30':   {'label': '40×30 مم (عامة)',              'w_mm': 40,   'h_mm': 30,   'cols': 5},
+    '50x30':   {'label': '50×30 مم (عامة)',              'w_mm': 50,   'h_mm': 30,   'cols': 4},
+    '38x25':   {'label': '38×25 مم (حرارية ضيقة)',       'w_mm': 38,   'h_mm': 25,   'cols': 5},
+    '57x32':   {'label': '57×32 مم (حرارية قياسية)',     'w_mm': 57,   'h_mm': 32,   'cols': 3},
+    '80x50':   {'label': '80×50 مم (حرارية كبيرة)',      'w_mm': 80,   'h_mm': 50,   'cols': 2},
+    '60x40':   {'label': '60×40 مم',                     'w_mm': 60,   'h_mm': 40,   'cols': 3},
+    '100x50':  {'label': '100×50 مم (شحن/لوجستيات)',    'w_mm': 100,  'h_mm': 50,   'cols': 2},
+    'a4-3col': {'label': 'A4 — 3 أعمدة (63.5×38.1 مم)', 'w_mm': 63.5, 'h_mm': 38.1, 'cols': 3},
+    'a4-4col': {'label': 'A4 — 4 أعمدة (48×25 مم)',     'w_mm': 48,   'h_mm': 25,   'cols': 4},
+}
+
+# الصيغ المسموح بها
+ALLOWED_BARCODE_FORMATS = {'AUTO', 'CODE128', 'EAN13', 'EAN8', 'UPC', 'UPCE', 'CODE39'}
+
+# رمز العملة الافتراضي (يمكن تعديله من الإعدادات العامة)
+DEFAULT_CURRENCY = 'ريال'
+
+
+def _detect_barcode_format(code: str) -> str:
+    """
+    اكتشاف صيغة الباركود تلقائيًا حسب نوع الكود.
+    القاعدة: كل ما لا يناسب EAN/UPC بشكل حصري → CODE128 (الأكثر توافقاً).
+    """
+    import re
+    code = str(code or '').strip()
+    if re.fullmatch(r'\d{13}', code): return 'EAN13'
+    if re.fullmatch(r'\d{12}', code): return 'UPC'
+    if re.fullmatch(r'\d{8}',  code): return 'EAN8'
+    # CODE39 فقط للأكواد التي تبدأ بحرف كبير — الأرقام القصيرة مثل 5544 تذهب لـ CODE128
+    if re.fullmatch(r'[A-Z][A-Z0-9\-\.\$\/\+\% ]{2,42}', code): return 'CODE39'
+    return 'CODE128'
+
+
+def _calc_label_fonts(preset: dict, show_name: bool, show_price: bool, show_code: bool) -> dict:
+    """
+    حساب أحجام الخطوط بناءً على أبعاد الملصق.
+    يعيد قاموسًا بأحجام البيكسل لكل عنصر.
+    """
+    h = preset['h_mm']
+    w = preset['w_mm']
+
+    # نسبة التحجيم: ملصق صغير = خطوط أصغر
+    scale = min(h / 30.0, w / 40.0, 1.3)
+
+    def s(base):
+        return round(base * scale, 1)
+
+    return {
+        'name_font'     : s(8.5)  if show_name  else 0,
+        'bnum_font'     : s(7.0),   # رقم الباركود (دائماً)
+        'code_font'     : s(7.0)  if show_code  else 0,
+        'price_font'    : s(9.5)  if show_price else 0,
+        'currency_font' : s(7.0)  if show_price else 0,
+    }
+
+
+@app.route('/products/barcode-labels')
 @login_required
-def api_product(id):
-    p = Product.query.get_or_404(id)
-    return jsonify({'id': p.id, 'name': p.name, 'price': p.sell_price, 'cost': p.cost_price, 'unit': p.unit})
+def barcode_labels():
+    """صفحة اختيار الأصناف وإعداد طباعة ملصقات الباركود."""
+    preselect = None
+    pid = request.args.get('product_id', type=int)
+    if pid:
+        p = Product.query.filter_by(id=pid, is_active=True).first()
+        if p:
+            preselect = {
+                'id': p.id, 'name': p.name, 'code': p.code,
+                'barcode': (p.barcode or p.code or ''), 'price': p.sell_price,
+            }
+    size_options = [{'key': k, **v} for k, v in BARCODE_LABEL_SIZE_PRESETS.items()]
+    # رمز العملة من الإعدادات العامة أو الافتراضي
+    currency_row = AppSetting.query.filter_by(key='currency_symbol').first()
+    default_currency = (currency_row.value if currency_row and currency_row.value else DEFAULT_CURRENCY)
+    return render_template(
+        'barcode_labels.html',
+        preselect=preselect,
+        size_options=size_options,
+        default_currency=default_currency,
+    )
 
-@app.route('/api/product/search')
+
+@app.route('/products/barcode-labels/print', methods=['POST'])
 @login_required
-def api_product_search():
-    q = (request.args.get('q') or '').strip()
-    warehouse_id = request.args.get('warehouse_id')
-    limit = request.args.get('limit', type=int) or 80
-    limit = max(1, min(limit, 100))
-    query = Product.query.filter_by(is_active=True)
-    if q:
-        query = query.filter(db.or_(
-            Product.name.contains(q),
-            Product.code.contains(q),
-            Product.barcode.contains(q),
-        ))
-    products = query.order_by(Product.name).limit(limit).all()
-    try:
-        warehouse_id_int = int(warehouse_id) if warehouse_id not in (None, '', 'null') else None
-    except Exception:
-        warehouse_id_int = None
+def barcode_labels_print():
+    product_ids  = request.form.getlist('product_id[]')
+    quantities   = request.form.getlist('qty[]')
+    size_key     = request.form.get('label_size') or '40x30'
+    barcode_fmt  = (request.form.get('barcode_fmt') or 'AUTO').upper().strip()
+    currency     = (request.form.get('currency') or DEFAULT_CURRENCY).strip()[:15]
+    show_name    = request.form.get('show_name')  == '1'
+    show_price   = request.form.get('show_price') == '1'
+    show_code    = request.form.get('show_code')  == '1'
 
-    result = []
-    for p in products:
-        if warehouse_id_int is not None:
-            stock = Stock.query.filter_by(product_id=p.id, warehouse_id=warehouse_id_int).first()
-            qty = stock.quantity if stock else 0
-        else:
-            qty = db.session.query(db.func.coalesce(db.func.sum(Stock.quantity), 0)).filter(Stock.product_id == p.id).scalar() or 0
-        result.append({'id': p.id, 'code': p.code, 'name': p.name,
-                       'price': p.sell_price, 'cost': p.cost_price, 'unit': p.unit, 'qty': qty})
-    return jsonify(result)
+    if size_key not in BARCODE_LABEL_SIZE_PRESETS:
+        size_key = '40x30'
+    if barcode_fmt not in ALLOWED_BARCODE_FORMATS:
+        barcode_fmt = 'AUTO'
 
+    labels = []
+    for i, pid in enumerate(product_ids):
+        if not pid:
+            continue
+        try:
+            pid_int = int(pid)
+            qty_raw = quantities[i] if i < len(quantities) else '1'
+            qty = max(1, min(int(float(qty_raw) if qty_raw not in (None, '') else 1), 500))
+        except (ValueError, TypeError, IndexError):
+            continue
+        product = Product.query.filter_by(id=pid_int, is_active=True).first()
+        if not product:
+            continue
+        code_val = (product.barcode or product.code or '').strip()
+        if not code_val:
+            continue
+        # تحديد الصيغة لكل ملصق
+        fmt = _detect_barcode_format(code_val) if barcode_fmt == 'AUTO' else barcode_fmt
+        for _ in range(qty):
+            labels.append({
+                'name'   : product.name,
+                'code'   : product.code or '',
+                'barcode': code_val,
+                'price'  : product.sell_price or 0,
+                'fmt'    : fmt,
+            })
+
+    if not labels:
+        flash('يرجى اختيار صنف واحد على الأقل له كود أو باركود صالح لطباعته', 'error')
+        return redirect(url_for('barcode_labels'))
+
+    if len(labels) > 1000:
+        labels = labels[:1000]
+        flash('تم الاكتفاء بأول 1000 ملصق — يرجى تقسيم الطباعة لدفعات أصغر', 'warning')
+
+    preset    = BARCODE_LABEL_SIZE_PRESETS[size_key]
+    fonts     = _calc_label_fonts(preset, show_name, show_price, show_code)
+    is_sheet  = preset['cols'] > 1
+
+    return render_template(
+        'barcode_labels_print.html',
+        labels=labels,
+        preset=preset,
+        is_sheet=is_sheet,
+        show_name=show_name,
+        show_price=show_price,
+        show_code=show_code,
+        currency=currency,
+        auto_print=False,
+        **fonts,
+    )
 
 @app.route('/products/search')
 @login_required
@@ -2110,15 +2246,15 @@ def products_search():
         else:
             qty = db.session.query(db.func.coalesce(db.func.sum(Stock.quantity), 0)).filter(Stock.product_id == p.id).scalar() or 0
         items.append({
-            'id': p.id,
-            'name': p.name,
-            'code': p.code,
-            'barcode': p.barcode,
-            'price': p.sell_price,
-            'cost': p.cost_price,
-            'unit': p.unit,
-            'stock': qty,
-            'qty': qty,  # backward compatibility for existing JS widgets
+            'id'     : p.id,
+            'name'   : p.name,
+            'code'   : p.code    or '',
+            'barcode': p.barcode or '',   # لا نرجع None — الـ JS يعرضه كـ 0
+            'price'  : p.sell_price  or 0,
+            'cost'   : p.cost_price  or 0,
+            'unit'   : p.unit   or '',
+            'stock'  : qty,
+            'qty'    : qty,
         })
 
     return jsonify({
@@ -2920,6 +3056,146 @@ def new_sale():
         sale_tax_auto=(gs.get('sale_fixed_tax_enabled') or '0').strip() in ('1', 'true', 'on', 'yes'),
         sale_tax_percent=float(gs.get('sale_fixed_tax_percent') or 0),
     )
+
+
+# ===== HOLD / PARK SALE (فاتورة معلّقة مؤقتاً) =====
+
+@app.route('/sales/hold', methods=['POST'])
+@login_required
+def hold_sale():
+    """تعليق فاتورة البيع الحالية كمسودة بدون خصم من المخزون وبدون تسجيل دفعة —
+    تُستخدم لخدمة زبون تاني بسرعة والرجوع للفاتورة المعلّقة لاحقاً."""
+    warehouse_id = request.form.get('warehouse_id') or None
+    customer_id = request.form.get('customer_id') or None
+    product_ids = request.form.getlist('product_id[]')
+    quantities = request.form.getlist('quantity[]')
+    prices = request.form.getlist('price[]')
+    discounts = request.form.getlist('discount[]')
+
+    if not warehouse_id:
+        flash('يرجى اختيار المخزن قبل تعليق الفاتورة', 'error')
+        return redirect(url_for('new_sale'))
+
+    try:
+        warehouse_id = int(warehouse_id)
+        total_discount_val = float(request.form.get('total_discount', 0) or 0)
+        tax_val = float(request.form.get('tax', 0) or 0)
+        lines = []
+        for i, pid in enumerate(product_ids):
+            if not pid:
+                continue
+            qty = float(quantities[i] or 0)
+            price = float(prices[i] or 0)
+            disc = float(discounts[i]) if i < len(discounts) and (discounts[i] not in (None, '')) else 0.0
+            if qty > 0 and price > 0:
+                lines.append({'product_id': int(pid), 'quantity': qty, 'price': price, 'discount': disc})
+    except (ValueError, TypeError, IndexError):
+        flash('توجد بيانات غير صحيحة في الفاتورة (كمية/سعر/خصم) — تعذر تعليقها', 'error')
+        return redirect(url_for('new_sale'))
+
+    if not lines:
+        flash('يرجى إضافة صنف واحد على الأقل بكمية وسعر صحيحين قبل تعليق الفاتورة', 'error')
+        return redirect(url_for('new_sale'))
+
+    held = HeldSale(
+        hold_number=get_next_number('HOLD', HeldSale, 'hold_number'),
+        customer_id=customer_id,
+        warehouse_id=warehouse_id,
+        user_id=current_user.id,
+        branch_id=getattr(current_user, 'branch_id', None),
+        notes=request.form.get('notes'),
+        total_discount=total_discount_val,
+        tax=tax_val,
+        items_json=json.dumps(lines),
+    )
+    db.session.add(held)
+    db.session.commit()
+    flash(f'تم تعليق الفاتورة برقم {held.hold_number} — استرجعها لاحقاً من زر «الفواتير المعلقة»', 'success')
+    return redirect(url_for('new_sale'))
+
+
+@app.route('/api/sales/held')
+@login_required
+def api_held_sales():
+    """قائمة الفواتير المعلّقة بصيغة JSON لعرضها في المودال."""
+    q = HeldSale.query.order_by(HeldSale.created_at.desc())
+    if getattr(current_user, 'role', None) not in ('developer', 'admin', 'manager'):
+        q = q.filter_by(user_id=current_user.id)
+    rows = q.limit(100).all()
+    out = []
+    for h in rows:
+        try:
+            items = json.loads(h.items_json or '[]')
+        except (json.JSONDecodeError, TypeError):
+            items = []
+        total = sum((it.get('quantity', 0) or 0) * (it.get('price', 0) or 0) * (1 - (it.get('discount', 0) or 0) / 100) for it in items)
+        total = max(0.0, total - (h.total_discount or 0)) + (h.tax or 0)
+        out.append({
+            'id': h.id,
+            'hold_number': h.hold_number,
+            'customer_name': h.customer.name if h.customer else 'عميل نقدي',
+            'warehouse_name': h.warehouse.name if h.warehouse else '-',
+            'items_count': len(items),
+            'total': round(total, 2),
+            'user_name': (h.user.full_name or h.user.username) if h.user else '-',
+            'created_at': h.created_at.strftime('%Y-%m-%d %H:%M') if h.created_at else '',
+        })
+    return jsonify(out)
+
+
+@app.route('/api/sales/held/<int:id>/resume', methods=['POST'])
+@login_required
+def api_resume_held_sale(id):
+    """استرجاع فاتورة معلّقة: بترجّع بياناتها للواجهة وتتحذف من قائمة المعلّق فورًا."""
+    held = HeldSale.query.get_or_404(id)
+    if getattr(current_user, 'role', None) not in ('developer', 'admin', 'manager') and held.user_id != current_user.id:
+        return jsonify({'error': 'forbidden'}), 403
+    try:
+        raw_items = json.loads(held.items_json or '[]')
+    except (json.JSONDecodeError, TypeError):
+        raw_items = []
+
+    items_out = []
+    for it in raw_items:
+        product = Product.query.get(it.get('product_id'))
+        if not product:
+            continue
+        stock = Stock.query.filter_by(product_id=product.id, warehouse_id=held.warehouse_id).first()
+        items_out.append({
+            'id': product.id,
+            'name': product.name,
+            'code': product.code,
+            'barcode': product.barcode or '',
+            'stock': float(stock.quantity) if stock else 0.0,
+            'qty': it.get('quantity', 0),
+            'price': it.get('price', 0),
+            'discount': it.get('discount', 0),
+        })
+
+    data = {
+        'customer_id': held.customer_id or '',
+        'warehouse_id': held.warehouse_id or '',
+        'notes': held.notes or '',
+        'total_discount': held.total_discount or 0,
+        'tax': held.tax or 0,
+        'items': items_out,
+    }
+    db.session.delete(held)
+    db.session.commit()
+    return jsonify(data)
+
+
+@app.route('/api/sales/held/<int:id>/delete', methods=['POST'])
+@login_required
+def api_delete_held_sale(id):
+    """إلغاء فاتورة معلّقة نهائياً بدون استرجاعها."""
+    held = HeldSale.query.get_or_404(id)
+    if getattr(current_user, 'role', None) not in ('developer', 'admin', 'manager') and held.user_id != current_user.id:
+        return jsonify({'error': 'forbidden'}), 403
+    db.session.delete(held)
+    db.session.commit()
+    return jsonify({'ok': True})
+
 
 @app.route('/sales/<int:id>')
 @login_required
@@ -4422,7 +4698,7 @@ def app_settings():
                 db.session.add(row)
             row.value = val
         db.session.commit()
-        flash('تم حفظ إعدادات النظام' + (f' للفرع الحالي' if bid else ' (عامة للنظام)'), 'success')
+        flash('تم حفظ إعدادات النظام' + (' للفرع الحالي' if bid else ' (عامة للنظام)'), 'success')
         return redirect(url_for('app_settings'))
     br = Branch.query.get(bid) if bid else None
     return render_template(
