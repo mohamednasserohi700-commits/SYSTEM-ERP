@@ -16,6 +16,7 @@
         th, td { border: 1px solid #ccc; padding: 8px 10px; text-align: right; }
         th { background: #1a1a1a; color: #fff; }
         .total { font-size: 18px; font-weight: 800; margin-top: 20px; }
+        .footer { margin-top: 28px; text-align: center; font-size: 11px; color: #999; border-top: 1px solid #eee; padding-top: 14px; }
 
         /* ===== POS thermal receipt (80mm / 58mm) ===== */
         body.pos {
@@ -39,6 +40,7 @@
         body.pos table th:nth-child(6), body.pos table td:nth-child(6) { width: 16%; }
         body.pos table th { background: none; color: #000; font-weight: 700; border-bottom: 1px dashed #000; border-top: 1px dashed #000; }
         body.pos .total { font-size: 14px; text-align: center; margin-top: 10px; border-top: 1px dashed #000; padding-top: 6px; }
+        body.pos .footer { font-size: 9px; margin-top: 8px; padding-top: 6px; }
         body.pos.pos58 { font-size: 10px; }
         body.pos.pos58 table th, body.pos.pos58 table td { font-size: 8px; padding: 3px 2px; }
 
@@ -76,6 +78,9 @@
         </tbody>
     </table>
     <div class="total">الإجمالي: {{ "{:,.2f}".format(ret.total) }}</div>
+    <div class="footer">
+        <p>{{ app_brand_title }}</p>
+    </div>
     </div>
 <script>
 (function () {
