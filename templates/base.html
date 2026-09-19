@@ -125,6 +125,10 @@
         [data-theme="fiori"] .alert-warning{background:rgba(233,115,12,.08);border:1px solid rgba(233,115,12,.2);color:var(--warning)}
         [data-theme="fiori"] .alert-info{background:rgba(10,110,209,.08);border:1px solid rgba(10,110,209,.18);color:var(--accent)}
         [data-theme="fiori"] .sidebar-nav{scrollbar-color:rgba(22,50,92,.12) transparent}
+        html[data-theme="fiori"]{scrollbar-color:rgba(22,50,92,.30) rgba(22,50,92,.06)}
+        [data-theme="fiori"] ::-webkit-scrollbar-track{background:rgba(22,50,92,.06)}
+        [data-theme="fiori"] ::-webkit-scrollbar-thumb{background:rgba(22,50,92,.30);background-clip:padding-box}
+        [data-theme="fiori"] ::-webkit-scrollbar-thumb:hover{background:rgba(22,50,92,.45);background-clip:padding-box}
         [data-theme="light"]{
             --primary:#f8fafc;--secondary:#ffffff;--accent:#ca8a04;--accent-hover:#a16207;
             --accent-soft:rgba(202,138,4,.14);--success:#047857;--danger:#b91c1c;
@@ -138,6 +142,10 @@
         [data-theme="light"] .sidebar{background:var(--secondary);border-left-color:var(--border);box-shadow:-6px 0 32px rgba(15,23,42,.06)}
         [data-theme="light"] .nav-link.active{color:#fff}
         [data-theme="light"] .sidebar-nav{scrollbar-color:rgba(15,23,42,.15) transparent}
+        html[data-theme="light"]{scrollbar-color:rgba(15,23,42,.28) rgba(15,23,42,.05)}
+        [data-theme="light"] ::-webkit-scrollbar-track{background:rgba(15,23,42,.05)}
+        [data-theme="light"] ::-webkit-scrollbar-thumb{background:rgba(15,23,42,.28);background-clip:padding-box}
+        [data-theme="light"] ::-webkit-scrollbar-thumb:hover{background:rgba(15,23,42,.42);background-clip:padding-box}
         [data-theme="light"] .form-control{background:#fff;border-color:#cbd5e1;color:#0f172a}
         [data-theme="light"] .form-control:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(202,138,4,.2)}
         [data-theme="light"] .card{background:var(--card);border-color:#e2e8f0}
@@ -583,7 +591,7 @@
             <img src="{{ url_for('static', filename='img/logo-makers-erp-3d.png') }}" alt="Makers ERP">
         </div>
         <div class="logo-text">
-            <div class="name">{{ app_brand_title | default('النظام المحاسبي الذكي ERP') }}</div>
+            <div class="name">{{ app_brand_title | default('Silsal POS') }}</div>
             <div class="sub">نظام إدارة الأعمال المتكامل</div>
         </div>
     </div>
@@ -601,14 +609,8 @@
         <div class="nav-section">
             <div class="nav-label">المبيعات والعمليات</div>
             {% if can('sales') %}
-            <a href="{{ url_for('sales') }}" class="nav-link {% if 'sale' in (request.endpoint or '') and 'return' not in (request.endpoint or '') and 'report' not in (request.endpoint or '') and 'shift' not in (request.endpoint or '') %}active{% endif %}">
+            <a href="{{ url_for('sales') }}" class="nav-link {% if 'sale' in (request.endpoint or '') and 'return' not in (request.endpoint or '') and 'report' not in (request.endpoint or '') %}active{% endif %}">
                 <i class="fas fa-cash-register"></i><span class="label">المبيعات</span>
-            </a>
-            {% endif %}
-            {% if can('shifts') %}
-            <a href="{{ url_for('shifts') }}" class="nav-link {% if 'shift' in (request.endpoint or '') %}active{% endif %}">
-                <i class="fas fa-wallet"></i><span class="label">الورديات</span>
-                {% if current_open_shift %}<span class="nav-badge" style="background:rgba(16,185,129,.18);color:#34d399;">مفتوحة</span>{% endif %}
             </a>
             {% endif %}
             {% if can('purchases') %}
@@ -645,7 +647,7 @@
                 <i class="fas fa-sliders-h"></i><span class="label">تسوية المخزون</span>
             </a>
             {% endif %}
-            {% if can('inventory') %}
+            {% if can('inventory_memos') %}
             <div class="nav-label" style="padding-top:10px;font-size:9px;">إدخال وإخراج</div>
             <a href="{{ url_for('inventory_memos_list') }}" class="nav-link {% if request.endpoint in ['inventory_memos_list','inventory_memo_issue','inventory_memo_receive','inventory_memo_detail','inventory_memo_print'] %}active{% endif %}">
                 <i class="fas fa-clipboard-list"></i><span class="label">مذكرات مخزون</span>
@@ -797,15 +799,6 @@
             <span class="sub-pill {% if subscription_status.kind in ('developer','permanent') %}ok{% elif subscription_status.kind in ('expired','none') %}bad{% else %}warn{% endif %}" title="حالة الاشتراك / الترخيص">
                 <i class="fas fa-certificate" style="margin-left:6px;opacity:.85;"></i>{{ subscription_status.line }}
             </span>
-            {% endif %}
-            {% if current_open_shift %}
-            <a href="{{ url_for('shift_detail', id=current_open_shift.id) }}" class="sub-pill ok" title="لديك وردية مفتوحة" style="text-decoration:none;">
-                <i class="fas fa-wallet" style="margin-left:6px;opacity:.85;"></i> وردية مفتوحة
-            </a>
-            {% elif can('shifts') %}
-            <a href="{{ url_for('open_shift') }}" class="sub-pill warn" title="لا توجد وردية مفتوحة" style="text-decoration:none;">
-                <i class="fas fa-wallet" style="margin-left:6px;opacity:.85;"></i> افتح وردية
-            </a>
             {% endif %}
             <button type="button" class="theme-toggle" onclick="erpToggleTheme()" title="تبديل الثيم (Fiori / فاتح / داكن)"><i class="fas fa-adjust"></i></button>
             <div class="erp-device-layout-tools" style="display:flex;align-items:center;gap:4px;flex-shrink:0;" title="وضع العرض — يُحفظ على هذا الجهاز فقط">
