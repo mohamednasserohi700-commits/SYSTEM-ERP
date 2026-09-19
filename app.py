@@ -18,6 +18,10 @@ import time as time_module
 from werkzeug.utils import secure_filename
 from sqlalchemy import event
 from sqlalchemy.engine.url import make_url
+try:
+    import openpyxl
+except ImportError:
+    openpyxl = None
 
 app = Flask(__name__)
 
@@ -267,32 +271,12 @@ class InvoiceEditLog(db.Model):
     user = db.relationship('User')
 
 
-class CashShift(db.Model):
-    """وردية كاشير: فتح الدرج برصيد افتتاحي، وقفله بجرد فعلي للكاش ومطابقته بالمتوقع."""
-    id = db.Column(db.Integer, primary_key=True)
-    shift_number = db.Column(db.String(50), unique=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'))
-    opened_at = db.Column(db.DateTime, default=datetime.utcnow)
-    closed_at = db.Column(db.DateTime, nullable=True)
-    opening_balance = db.Column(db.Float, default=0)
-    expected_cash = db.Column(db.Float, nullable=True)
-    actual_cash = db.Column(db.Float, nullable=True)
-    difference = db.Column(db.Float, nullable=True)
-    status = db.Column(db.String(20), default='open')  # open, closed
-    notes = db.Column(db.Text)
-    close_notes = db.Column(db.Text)
-    user = db.relationship('User', foreign_keys=[user_id])
-    branch = db.relationship('Branch')
-
-
 class Sale(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     invoice_number = db.Column(db.String(50), unique=True)
     customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'))
     warehouse_id = db.Column(db.Integer, db.ForeignKey('warehouse.id'))
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    shift_id = db.Column(db.Integer, db.ForeignKey('cash_shift.id'), nullable=True)
     payment_method = db.Column(db.String(20), default='cash')  # cash, card, transfer, other
     date = db.Column(db.DateTime, default=datetime.utcnow)
     subtotal = db.Column(db.Float, default=0)
@@ -306,7 +290,6 @@ class Sale(db.Model):
     items = db.relationship('SaleItem', backref='sale', lazy=True, cascade='all, delete-orphan')
     user = db.relationship('User')
     warehouse = db.relationship('Warehouse')
-    shift = db.relationship('CashShift', foreign_keys=[shift_id])
 
 class SaleItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -485,10 +468,8 @@ class Expense(db.Model):
     amount = db.Column(db.Float)
     branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'))
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    shift_id = db.Column(db.Integer, db.ForeignKey('cash_shift.id'), nullable=True)
     user = db.relationship('User')
     branch = db.relationship('Branch')
-    shift = db.relationship('CashShift', foreign_keys=[shift_id])
 
 class CustomerPayment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -552,10 +533,10 @@ def admin_required(f):
 PERMISSION_KEYS = [
     ('dashboard', 'لوحة التحكم'),
     ('sales', 'المبيعات'),
-    ('shifts', 'الورديات (فتح/قفل الكاش)'),
     ('purchases', 'المشتريات'),
     ('returns', 'المرتجعات'),
     ('inventory', 'المخزون والجرد'),
+    ('inventory_memos', 'مذكرات المخزون (إذن إخراج / استلام إنتاج)'),
     ('transfers', 'تحويلات المخازن'),
     ('transfer_approve', 'الموافقة على تحويلات المخازن'),
     ('adjust_stock', 'تسوية المخزون'),
@@ -564,6 +545,7 @@ PERMISSION_KEYS = [
     ('employees', 'الموظفون'),
     ('expenses', 'المصاريف'),
     ('products', 'الأصناف'),
+    ('product_add', 'إضافة صنف جديد'),
     ('categories', 'التصنيفات'),
     ('reports', 'التقارير'),
     ('settings', 'الإعدادات (فروع / مخازن / ضريبة البيع)'),
@@ -586,9 +568,9 @@ DEVELOPER_ONLY_PERMS = frozenset({'warehouse_purge', 'stock_line_delete'})
 
 DEFAULT_SETTINGS = {
     'company_name': 'System Makers',
-    'app_title': 'النظام المحاسبي الذكي ERP',
+    'app_title': 'Silsal POS',
     'app_subtitle': 'نظام إدارة أعمال ومحاسبة',
-    'program_label': 'System Erp 2026',
+    'program_label': 'Silsal POS',
     'layout_max_width': '1400px',
     'license_expiry_message': 'انتهى اشتراكك. يرجى التواصل مع المورد لتجديد الترخيص.',
 }
@@ -651,8 +633,8 @@ def user_can(user, perm: str) -> bool:
         return True
     if user.role == 'user':
         return perm in {
-            'dashboard', 'sales', 'shifts', 'purchases', 'returns', 'inventory', 'transfers',
-            'customers', 'suppliers', 'expenses', 'products', 'categories', 'reports',
+            'dashboard', 'sales', 'purchases', 'returns', 'inventory', 'transfers',
+            'customers', 'suppliers', 'expenses', 'products', 'product_add', 'categories', 'reports',
         }
     if user.role in ('hr_manager', 'hr_officer', 'payroll_officer', 'department_manager', 'employee'):
         return perm == 'dashboard'
@@ -694,8 +676,8 @@ def default_role_permission_set(role: str) -> set:
         return keys_all - MANAGER_DEFAULT_DENIED - DEVELOPER_ONLY_PERMS
     if role == 'user':
         return {
-            'dashboard', 'sales', 'shifts', 'purchases', 'returns', 'inventory', 'transfers',
-            'customers', 'suppliers', 'expenses', 'products', 'categories', 'reports',
+            'dashboard', 'sales', 'purchases', 'returns', 'inventory', 'inventory_memos', 'transfers',
+            'customers', 'suppliers', 'expenses', 'products', 'product_add', 'categories', 'reports',
         }
     if role in ('hr_manager', 'hr_officer', 'payroll_officer', 'department_manager', 'employee'):
         return {'dashboard'}
@@ -711,14 +693,20 @@ def effective_selected_permissions_for_form(user, keys_visible: frozenset):
     return sorted(str(k) for k in base if k in keys_visible)
 
 
-def _permissions_form_to_stored(perms_list, role: str, keys_visible: frozenset):
-    """تحويل ما أُرسل من النموذج إلى JSON أو None إن طابق افتراضيات الدور."""
-    if not perms_list:
+def _permissions_form_to_stored(perms_list, role: str, keys_visible: frozenset, always_keep=frozenset()):
+    """تحويل ما أُرسل من النموذج إلى JSON أو None إن طابق افتراضيات الدور.
+    always_keep: صلاحيات محفوظة مسبقاً للمستخدم لا يملك المُحرِّر الحالي رؤيتها في
+    النموذج (خارج keys_visible) — تُحفظ كما هي دون المرور بفلترة keys_visible حتى
+    لا تُفقَد بصمت بسبب فتح شاشة التعديل من طرف مُحرِّر أقل صلاحية."""
+    always_keep = set(always_keep)
+    if not perms_list and not always_keep:
         return None
-    s = set(perms_list) & keys_visible
+    s = (set(perms_list) & keys_visible) | always_keep
+    if not s:
+        return None
     if 'dashboard' not in s:
         s.add('dashboard')
-    default = {k for k in default_role_permission_set(role) if k in keys_visible}
+    default = {k for k in default_role_permission_set(role) if k in keys_visible} | always_keep
     if s == default:
         return None
     return sorted(s)
@@ -749,6 +737,16 @@ def returns_delete_required(f):
     def decorated(*args, **kwargs):
         if not user_can(current_user, 'returns_delete'):
             flash('ليس لديك صلاحية حذف فواتير المرتجعات. يمنحها مدير النظام من صلاحيات المستخدم.', 'error')
+            return redirect(safe_home_url_for(current_user))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def product_add_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not user_can(current_user, 'product_add'):
+            flash('ليس لديك صلاحية إضافة صنف جديد. يمنحها مدير النظام من صلاحيات المستخدم.', 'error')
             return redirect(safe_home_url_for(current_user))
         return f(*args, **kwargs)
     return decorated
@@ -1028,7 +1026,7 @@ def path_required_permission(path: str):
         ('/returns/sale', 'returns'),
         ('/returns/purchase', 'returns'),
         ('/inventory/adjust', 'adjust_stock'),
-        ('/inventory/memos', 'inventory'),
+        ('/inventory/memos', 'inventory_memos'),
         ('/transfers', 'transfers'),
         ('/inventory', 'inventory'),
         ('/customers', 'customers'),
@@ -1038,7 +1036,6 @@ def path_required_permission(path: str):
         ('/categories', 'categories'),
         ('/products', 'products'),
         ('/sales', 'sales'),
-        ('/shifts', 'shifts'),
         ('/purchases', 'purchases'),
         ('/reports', 'reports'),
         ('/about', 'dashboard'),
@@ -1080,19 +1077,41 @@ BACKUPS_DIR = os.path.join(_INSTANCE_DIR, 'backups')
 os.makedirs(BACKUPS_DIR, exist_ok=True)
 
 
+# ترتيب الأدوار من الأدنى للأعلى — يُستخدم لمنع أي مستخدم من تعيين/تعديل دور
+# أو صلاحية تتجاوز رتبته الخاصة (نفس المنطق المستخدم في إخراج المتصلين).
+ROLE_RANK = {'developer': 4, 'admin': 3, 'manager': 2, 'user': 1}
+
+
+def assignable_roles_for(viewer):
+    """الأدوار التي يجوز لهذا المُحرِّر تعيينها لغيره عند إضافة/تعديل مستخدم.
+    مانع أساسي لمنع مستخدم أدنى (مثل مشرف) من إنشاء أو ترقية حساب لدور أعلى منه
+    (مدير نظام أو مطوّر)."""
+    r = getattr(viewer, 'role', None) if viewer and getattr(viewer, 'is_authenticated', False) else None
+    if r == 'developer':
+        return ['user', 'manager', 'admin', 'developer']
+    if r == 'admin':
+        return ['user', 'manager', 'admin']
+    if r == 'manager':
+        return ['user']
+    return []
+
+
 def permission_keys_for_editor(viewer):
+    """مفاتيح الصلاحيات التي يجوز لهذا المُحرِّر منحها لغيره.
+    القاعدة: لا يجوز لأي مستخدم أن يمنح صلاحية هو نفسه لا يملكها فعلياً — وإلا
+    يصبح ممكناً لمشرف مُنِح صلاحية «المستخدمون» فقط أن يمنح نفسه أو غيره صلاحيات
+    أخطر (قاعدة البيانات، النسخ الاحتياطي، حذف مستخدمين...) لم يُصرَّح لها بها."""
     if not viewer or not getattr(viewer, 'is_authenticated', False):
         return [x for x in PERMISSION_KEYS if x[0] not in DEVELOPER_ONLY_PERMS]
     if getattr(viewer, 'role', None) == 'developer':
         return list(PERMISSION_KEYS)
-    return [x for x in PERMISSION_KEYS if x[0] not in DEVELOPER_ONLY_PERMS]
+    own = {k for k, _ in PERMISSION_KEYS if user_can(viewer, k)}
+    return [x for x in PERMISSION_KEYS if x[0] not in DEVELOPER_ONLY_PERMS and x[0] in own]
 
 
 def default_permissions_json_for_editor(viewer):
     keys_visible = frozenset(k for k, _ in permission_keys_for_editor(viewer))
-    roles = ['user', 'manager', 'admin']
-    if getattr(viewer, 'role', None) == 'developer':
-        roles.append('developer')
+    roles = assignable_roles_for(viewer) or ['user']
     return {r: sorted(default_role_permission_set(r) & keys_visible) for r in roles}
 
 
@@ -1388,17 +1407,9 @@ def ensure_schema():
                     conn.execute(text('ALTER TABLE purchase ADD COLUMN withholding_tax FLOAT DEFAULT 0'))
         if 'sale' in tables:
             scols = {c['name'] for c in insp.get_columns('sale')}
-            if 'shift_id' not in scols:
-                with db.engine.begin() as conn:
-                    conn.execute(text('ALTER TABLE sale ADD COLUMN shift_id INTEGER'))
             if 'payment_method' not in scols:
                 with db.engine.begin() as conn:
                     conn.execute(text("ALTER TABLE sale ADD COLUMN payment_method VARCHAR(20) DEFAULT 'cash'"))
-        if 'expense' in tables:
-            excols = {c['name'] for c in insp.get_columns('expense')}
-            if 'shift_id' not in excols:
-                with db.engine.begin() as conn:
-                    conn.execute(text('ALTER TABLE expense ADD COLUMN shift_id INTEGER'))
         if 'user' in tables:
             ucols = {c['name'] for c in insp.get_columns('user')}
             utbl = '"user"' if insp.bind.dialect.name == 'postgresql' else 'user'
@@ -1417,6 +1428,35 @@ def ensure_schema():
         except Exception:
             pass
         tables = insp.get_table_names()
+
+        # ── إزالة نهائية لمخلّفات ميزة "الورديات" المحذوفة (best-effort) ──
+        # الأعمدة/الجدول دول مبقاش ليهم أي مرجع في الكود، فبنشيلهم فعليًا من قاعدة
+        # البيانات لو الـ driver بيدعم DROP COLUMN (SQLite 3.35+ أو PostgreSQL).
+        # كل خطوة في try/except منفصلة عشان لو driver قديم مايدعمش الحذف، الباقي يكمل عادي.
+        if 'sale' in tables:
+            scols_now = {c['name'] for c in insp.get_columns('sale')}
+            if 'shift_id' in scols_now:
+                try:
+                    with db.engine.begin() as conn:
+                        conn.execute(text('ALTER TABLE sale DROP COLUMN shift_id'))
+                except Exception:
+                    pass
+        if 'expense' in tables:
+            excols_now = {c['name'] for c in insp.get_columns('expense')}
+            if 'shift_id' in excols_now:
+                try:
+                    with db.engine.begin() as conn:
+                        conn.execute(text('ALTER TABLE expense DROP COLUMN shift_id'))
+                except Exception:
+                    pass
+        if 'cash_shift' in tables:
+            try:
+                with db.engine.begin() as conn:
+                    conn.execute(text('DROP TABLE cash_shift'))
+            except Exception:
+                pass
+        tables = insp.get_table_names()
+
         if 'employee' in tables:
             ecols = {c['name'] for c in insp.get_columns('employee')}
             emp_cols = [
@@ -1539,22 +1579,6 @@ def get_next_number(prefix, model, field):
     last = db.session.query(model).order_by(db.desc(db.text('id'))).first()
     num = (last.id + 1) if last else 1
     return f"{prefix}{num:06d}"
-
-
-def get_open_shift_for_user(user_id):
-    """الوردية المفتوحة حالياً لهذا المستخدم (لو فيه)."""
-    if not user_id:
-        return None
-    return CashShift.query.filter_by(user_id=user_id, status='open').first()
-
-
-def compute_shift_expected_cash(shift):
-    """الكاش المتوقع في الدرج = الرصيد الافتتاحي + مبيعات كاش أثناء الوردية - مصاريف أثناء الوردية."""
-    cash_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.paid), 0.0)) \
-        .filter(Sale.shift_id == shift.id, Sale.payment_method == 'cash').scalar() or 0.0
-    shift_expenses = db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0.0)) \
-        .filter(Expense.shift_id == shift.id).scalar() or 0.0
-    return float(shift.opening_balance or 0) + float(cash_sales) - float(shift_expenses)
 
 
 def allocate_entity_code(prefix: str, model, field_name='code'):
@@ -1685,7 +1709,6 @@ def inject_globals():
         license_expiry_message_text=(get_app_settings_dict(branch_id=None).get('license_expiry_message') or DEFAULT_SETTINGS.get('license_expiry_message', '')),
         current_branch_id=bid,
         can_delete_users=user_can_delete_users_account(current_user) if current_user.is_authenticated else False,
-        current_open_shift=get_open_shift_for_user(current_user.id) if current_user.is_authenticated else None,
     )
 
 
@@ -1951,6 +1974,7 @@ def products():
 
 @app.route('/products/add', methods=['GET', 'POST'])
 @login_required
+@product_add_required
 def add_product():
     if request.method == 'POST':
         wh_id = request.form.get('warehouse_id')
@@ -2053,6 +2077,236 @@ def delete_product(id):
     db.session.commit()
     flash('تم حذف الصنف وإزالة أرصدته من المخازن', 'success')
     return redirect(url_for('products'))
+
+
+# ===== PRODUCTS IMPORT (EXCEL) — للمطوّر فقط =====
+_PRODUCT_IMPORT_HEADER_ALIASES = {
+    'code':    ['كود', 'كود الصنف', 'code'],
+    'name':    ['اسم الصنف', 'اسم الصنـف', 'اسم الصنــــف', 'الصنف', 'name'],
+    'qty':     ['الرصيد الافتتاحي', 'الرصيد', 'الكمية', 'qty', 'quantity'],
+    'warehouse': ['مخزن', 'المخزن', 'اسم المخزن', 'warehouse'],
+    'unit':    ['الوحدة', 'وحدة', 'unit'],
+    'cost':    ['سعر التكلفة', 'التكلفة', 'cost', 'cost_price'],
+    'sell':    ['سعر البيع', 'البيع', 'sell', 'sell_price', 'price'],
+    'min_stock': ['الحد الأدنى للمخزون', 'الحد الادنى للمخزون', 'الحد الأدنى', 'min_stock'],
+}
+
+
+def _match_import_columns(header_row):
+    """يحدد فهرس كل عمود بمطابقة عناوين الصف الأول مع الأسماء المعروفة.
+    ملاحظة: يتجاهل العناوين القصيرة جداً (مثل عمود التسلسل «م») حتى لا تتطابق
+    خطأً كجزء نصي من أسماء أعمدة أخرى، ويعتمد فقط على احتواء العنوان الفعلي
+    على اسم العمود المعروف (وليس العكس)، ولا يُسند نفس العمود لأكثر من حقل."""
+    mapping = {}
+    used_idx = set()
+    for idx, cell in enumerate(header_row):
+        title = (str(cell).strip() if cell is not None else '')
+        if len(title) < 3 or idx in used_idx:
+            continue
+        for key, aliases in _PRODUCT_IMPORT_HEADER_ALIASES.items():
+            if key in mapping:
+                continue
+            matched = False
+            for alias in aliases:
+                a = alias.strip()
+                if len(a) < 3:
+                    continue
+                if a in title or title in a:
+                    mapping[key] = idx
+                    used_idx.add(idx)
+                    matched = True
+                    break
+            if matched:
+                break
+    return mapping
+
+
+@app.route('/products/import', methods=['GET', 'POST'])
+@login_required
+@developer_required
+def import_products():
+    warehouses = Warehouse.query.filter_by(is_active=True).all()
+    if request.method == 'GET':
+        return render_template('product_import.html', warehouses=warehouses)
+
+    if openpyxl is None:
+        flash('تعذّر الاستيراد: مكتبة openpyxl غير مثبّتة على الخادم', 'error')
+        return redirect(url_for('import_products'))
+
+    f = request.files.get('file')
+    if not f or not f.filename:
+        flash('يرجى اختيار ملف إكسيل (.xlsx)', 'error')
+        return redirect(url_for('import_products'))
+    if not f.filename.lower().endswith(('.xlsx', '.xlsm')):
+        flash('امتداد الملف يجب أن يكون .xlsx', 'error')
+        return redirect(url_for('import_products'))
+
+    default_wh_id = request.form.get('default_warehouse_id') or None
+    default_unit = (request.form.get('default_unit') or 'قطعة').strip() or 'قطعة'
+    default_min_stock = request.form.get('default_min_stock', '0')
+    try:
+        default_min_stock_val = float(default_min_stock or 0)
+    except ValueError:
+        default_min_stock_val = 0
+
+    tmp = os.path.join(_INSTANCE_DIR, '_products_import_upload.xlsx')
+    try:
+        f.save(tmp)
+        wb = openpyxl.load_workbook(tmp, data_only=True)
+        ws = wb.worksheets[0]
+        rows_iter = ws.iter_rows(values_only=True)
+        try:
+            header_row = next(rows_iter)
+        except StopIteration:
+            flash('الملف فارغ', 'error')
+            return redirect(url_for('import_products'))
+        cols = _match_import_columns(header_row)
+        if 'name' not in cols:
+            flash('تعذّر التعرّف على عمود «اسم الصنف» في الملف — تأكد من وجود صف عناوين صحيح', 'error')
+            return redirect(url_for('import_products'))
+
+        # ذاكرة تخزين مؤقت للمخازن المُنشأة/المطابقة بالاسم أثناء هذا الاستيراد
+        warehouse_cache = {}
+
+        def resolve_warehouse(name):
+            name = (str(name).strip() if name else '')
+            if not name:
+                return None
+            if name in warehouse_cache:
+                return warehouse_cache[name]
+            wh = Warehouse.query.filter_by(name=name).first()
+            if not wh:
+                wh = Warehouse(name=name, is_active=True)
+                db.session.add(wh)
+                db.session.flush()
+            warehouse_cache[name] = wh
+            return wh
+
+        existing_products = Product.query.all()
+        products_by_code = {p.code: p for p in existing_products}
+        products_by_name = {}
+        for p in existing_products:
+            products_by_name.setdefault((p.name or '').strip(), p)
+        seen_codes_this_import = set()
+        added = 0
+        updated = 0
+        skipped = 0
+        errors = []
+
+        for row_num, row in enumerate(rows_iter, start=2):
+            if row is None or all(v is None or str(v).strip() == '' for v in row):
+                continue
+            try:
+                name_val = row[cols['name']] if cols.get('name') is not None and cols['name'] < len(row) else None
+                name_val = (str(name_val).strip() if name_val is not None else '')
+                if not name_val:
+                    skipped += 1
+                    continue
+
+                code_val = None
+                if cols.get('code') is not None and cols['code'] < len(row):
+                    raw_code = row[cols['code']]
+                    if raw_code not in (None, ''):
+                        code_val = str(raw_code).strip()
+                        try:
+                            if float(code_val) == int(float(code_val)):
+                                code_val = f"{int(float(code_val)):05d}"
+                        except ValueError:
+                            pass
+
+                # نبحث عن الصنف الموجود بالفعل لتحديثه بدلاً من تكراره:
+                # أولاً بمطابقة الكود، وإن لم يوجد أو كان الكود مستخدَماً بالفعل
+                # ضمن هذا الملف نفسه (تعارض داخل الملف)، نطابق باسم الصنف تحديداً.
+                product = None
+                if code_val and code_val not in seen_codes_this_import:
+                    product = products_by_code.get(code_val)
+                if product is None:
+                    product = products_by_name.get(name_val)
+
+                if not code_val or code_val in seen_codes_this_import:
+                    # لا يوجد كود بالملف، أو الكود مكرر داخل نفس الملف لصنف آخر
+                    code_val = product.code if product else allocate_entity_code('P', Product)
+                seen_codes_this_import.add(code_val)
+
+                unit_val = default_unit
+                if cols.get('unit') is not None and cols['unit'] < len(row):
+                    raw_unit = row[cols['unit']]
+                    if raw_unit not in (None, ''):
+                        unit_val = str(raw_unit).strip()
+
+                def _num(key):
+                    idx = cols.get(key)
+                    if idx is None or idx >= len(row):
+                        return 0.0
+                    v = row[idx]
+                    if v in (None, ''):
+                        return 0.0
+                    try:
+                        return float(v)
+                    except (ValueError, TypeError):
+                        return 0.0
+
+                cost_val = _num('cost')
+                sell_val = _num('sell')
+                qty_val = _num('qty')
+                min_stock_val = _num('min_stock') or default_min_stock_val
+
+                if product:
+                    # تحديث الصنف الموجود بدلاً من إنشاء نسخة جديدة مكررة
+                    product.name = name_val
+                    product.unit = unit_val
+                    product.cost_price = cost_val
+                    product.sell_price = sell_val
+                    product.min_stock = min_stock_val
+                    updated += 1
+                else:
+                    product = Product(code=code_val, name=name_val, unit=unit_val,
+                                       cost_price=cost_val, sell_price=sell_val,
+                                       min_stock=min_stock_val)
+                    db.session.add(product)
+                    db.session.flush()
+                    added += 1
+
+                products_by_code[product.code] = product
+                products_by_name[name_val] = product
+
+                wh = None
+                if cols.get('warehouse') is not None and cols['warehouse'] < len(row):
+                    wh = resolve_warehouse(row[cols['warehouse']])
+                if not wh and default_wh_id:
+                    wh = Warehouse.query.get(int(default_wh_id))
+                if wh:
+                    # نحدّث كمية المخزون الموجودة بدلاً من إضافة سطر جديد لنفس الصنف/المخزن
+                    stock = Stock.query.filter_by(product_id=product.id, warehouse_id=wh.id).first()
+                    if stock:
+                        stock.quantity = qty_val
+                    else:
+                        stock = Stock(product_id=product.id, warehouse_id=wh.id, quantity=qty_val)
+                        db.session.add(stock)
+            except Exception as e:
+                skipped += 1
+                errors.append(f'صف {row_num}: {e}')
+
+        db.session.commit()
+        msg = f'تم الاستيراد: {added} صنف جديد'
+        if updated:
+            msg += f'، وتحديث {updated} صنف موجود مسبقاً'
+        if skipped:
+            msg += f' — وتم تجاوز {skipped} صف (فارغ أو به خطأ)'
+        flash(msg, 'success' if (added or updated) else 'error')
+        if errors:
+            flash('أول الأخطاء: ' + ' | '.join(errors[:5]), 'error')
+        return redirect(url_for('products'))
+    except Exception as e:
+        db.session.rollback()
+        flash(f'فشل استيراد الملف: {e}', 'error')
+        return redirect(url_for('import_products'))
+    finally:
+        try:
+            if os.path.isfile(tmp):
+                os.remove(tmp)
+        except OSError:
+            pass
 
 
 # ===== BARCODE LABEL PRINTING (طباعة ملصقات باركود) =====
@@ -2364,6 +2618,166 @@ def add_customer():
         return redirect(url_for('customers'))
     suggested = allocate_entity_code('C', Customer)
     return render_template('customer_form.html', suggested_code=suggested)
+
+
+# ===== CUSTOMERS IMPORT (EXCEL) =====
+_CUSTOMER_IMPORT_HEADER_ALIASES = {
+    'code':    ['كود', 'كود العميل', 'code'],
+    'name':    ['اسم العميل', 'اسم الزبون', 'العملاء', 'العميل', 'الزبون', 'الاسم', 'name'],
+    'phone':   ['الهاتف', 'هاتف', 'تليفون', 'الموبايل', 'موبايل', 'phone'],
+    'email':   ['البريد', 'الايميل', 'الإيميل', 'email'],
+    'address': ['العنوان', 'عنوان', 'address'],
+    'credit_limit': ['حد الائتمان', 'الائتمان', 'credit_limit'],
+}
+
+
+def _match_entity_import_columns(header_row, aliases_map):
+    """نفس منطق مطابقة أعمدة استيراد الأصناف، مُعمَّم لأي كيان (عملاء/موردين).
+    يتجاهل العناوين القصيرة جداً (كعمود التسلسل «م») حتى لا تتطابق خطأً."""
+    mapping = {}
+    used_idx = set()
+    for idx, cell in enumerate(header_row):
+        title = (str(cell).strip() if cell is not None else '')
+        if len(title) < 3 or idx in used_idx:
+            continue
+        for key, aliases in aliases_map.items():
+            if key in mapping:
+                continue
+            matched = False
+            for alias in aliases:
+                a = alias.strip()
+                if len(a) < 3:
+                    continue
+                if a in title or title in a:
+                    mapping[key] = idx
+                    used_idx.add(idx)
+                    matched = True
+                    break
+            if matched:
+                break
+    return mapping
+
+
+@app.route('/customers/import', methods=['GET', 'POST'])
+@login_required
+@developer_required
+def import_customers():
+    if request.method == 'GET':
+        return render_template('customer_import.html')
+
+    if openpyxl is None:
+        flash('تعذّر الاستيراد: مكتبة openpyxl غير مثبّتة على الخادم', 'error')
+        return redirect(url_for('import_customers'))
+
+    f = request.files.get('file')
+    if not f or not f.filename:
+        flash('يرجى اختيار ملف إكسيل (.xlsx)', 'error')
+        return redirect(url_for('import_customers'))
+    if not f.filename.lower().endswith(('.xlsx', '.xlsm')):
+        flash('امتداد الملف يجب أن يكون .xlsx', 'error')
+        return redirect(url_for('import_customers'))
+
+    tmp = os.path.join(_INSTANCE_DIR, '_customers_import_upload.xlsx')
+    try:
+        f.save(tmp)
+        wb = openpyxl.load_workbook(tmp, data_only=True)
+        ws = wb.worksheets[0]
+        rows_iter = ws.iter_rows(values_only=True)
+        try:
+            header_row = next(rows_iter)
+        except StopIteration:
+            flash('الملف فارغ', 'error')
+            return redirect(url_for('import_customers'))
+        cols = _match_entity_import_columns(header_row, _CUSTOMER_IMPORT_HEADER_ALIASES)
+        if 'name' not in cols:
+            # لم يتم التعرّف على عمود الاسم بالعنوان — نلتقط أوسع عمود نصي غير رقمي بالكامل
+            # (يتوافق مع ملفات بسيطة من عمودين: «م» ثم اسم العميل بلا عنوان مطابق).
+            candidate_idx = None
+            for idx in range(len(header_row)):
+                title = (str(header_row[idx]).strip() if header_row[idx] is not None else '')
+                if len(title) >= 3 and idx not in cols.values():
+                    candidate_idx = idx
+                    break
+            if candidate_idx is None and len(header_row) >= 2:
+                candidate_idx = len(header_row) - 1
+            if candidate_idx is None:
+                flash('تعذّر التعرّف على عمود «اسم العميل» في الملف — تأكد من وجود صف عناوين صحيح', 'error')
+                return redirect(url_for('import_customers'))
+            cols['name'] = candidate_idx
+
+        existing_by_name = {}
+        for c in Customer.query.all():
+            existing_by_name.setdefault((c.name or '').strip(), c)
+
+        added = 0
+        skipped = 0
+        errors = []
+        for row_num, row in enumerate(rows_iter, start=2):
+            if row is None or all(v is None or str(v).strip() == '' for v in row):
+                continue
+            try:
+                name_idx = cols['name']
+                name_val = row[name_idx] if name_idx < len(row) else None
+                name_val = (str(name_val).strip() if name_val is not None else '')
+                if not name_val:
+                    skipped += 1
+                    continue
+                if name_val in existing_by_name:
+                    skipped += 1
+                    continue
+
+                def _txt(key):
+                    idx = cols.get(key)
+                    if idx is None or idx >= len(row):
+                        return None
+                    v = row[idx]
+                    if v in (None, ''):
+                        return None
+                    return str(v).strip()
+
+                def _num(key):
+                    idx = cols.get(key)
+                    if idx is None or idx >= len(row):
+                        return 0.0
+                    v = row[idx]
+                    if v in (None, ''):
+                        return 0.0
+                    try:
+                        return float(v)
+                    except (ValueError, TypeError):
+                        return 0.0
+
+                code_val = _txt('code') or allocate_entity_code('C', Customer)
+                customer = Customer(code=code_val, name=name_val, phone=_txt('phone'),
+                                     email=_txt('email'), address=_txt('address'),
+                                     credit_limit=_num('credit_limit'))
+                db.session.add(customer)
+                db.session.flush()
+                existing_by_name[name_val] = customer
+                added += 1
+            except Exception as e:
+                skipped += 1
+                errors.append(f'صف {row_num}: {e}')
+
+        db.session.commit()
+        msg = f'تم استيراد {added} عميل جديد'
+        if skipped:
+            msg += f' — وتم تجاوز {skipped} صف (فارغ أو مكرر أو به خطأ)'
+        flash(msg, 'success' if added else 'error')
+        if errors:
+            flash('أول الأخطاء: ' + ' | '.join(errors[:5]), 'error')
+        return redirect(url_for('customers'))
+    except Exception as e:
+        db.session.rollback()
+        flash(f'فشل استيراد الملف: {e}', 'error')
+        return redirect(url_for('import_customers'))
+    finally:
+        try:
+            if os.path.isfile(tmp):
+                os.remove(tmp)
+        except OSError:
+            pass
+
 
 @app.route('/customers/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
@@ -2743,118 +3157,126 @@ def add_supplier():
     suggested = allocate_entity_code('S', Supplier)
     return render_template('supplier_form.html', suggested_code=suggested)
 
-# ===== SALES =====
-@app.route('/shifts')
+
+# ===== SUPPLIERS IMPORT (EXCEL) =====
+_SUPPLIER_IMPORT_HEADER_ALIASES = {
+    'code':    ['كود', 'كود المورد', 'code'],
+    'name':    ['اسم المورد', 'الموردين', 'المورد', 'الاسم', 'name'],
+    'phone':   ['الهاتف', 'هاتف', 'تليفون', 'الموبايل', 'موبايل', 'phone'],
+    'email':   ['البريد', 'الايميل', 'الإيميل', 'email'],
+    'address': ['العنوان', 'عنوان', 'address'],
+}
+
+
+@app.route('/suppliers/import', methods=['GET', 'POST'])
 @login_required
-def shifts():
-    q = CashShift.query.order_by(CashShift.opened_at.desc())
-    if current_user.role not in ('admin', 'manager', 'developer'):
-        q = q.filter(CashShift.user_id == current_user.id)
-    page = request.args.get('page', 1, type=int)
-    shifts_page = q.paginate(page=page, per_page=20)
-    my_open_shift = get_open_shift_for_user(current_user.id)
-    return render_template('shifts.html', shifts=shifts_page, my_open_shift=my_open_shift)
+@developer_required
+def import_suppliers():
+    if request.method == 'GET':
+        return render_template('supplier_import.html')
 
+    if openpyxl is None:
+        flash('تعذّر الاستيراد: مكتبة openpyxl غير مثبّتة على الخادم', 'error')
+        return redirect(url_for('import_suppliers'))
 
-@app.route('/shifts/open', methods=['GET', 'POST'])
-@login_required
-def open_shift():
-    existing = get_open_shift_for_user(current_user.id)
-    if existing:
-        flash('لديك وردية مفتوحة بالفعل — يجب قفلها أولاً قبل فتح وردية جديدة', 'error')
-        return redirect(url_for('shift_detail', id=existing.id))
-    if request.method == 'POST':
-        try:
-            opening_val = float(request.form.get('opening_balance') or 0)
-        except (TypeError, ValueError):
-            flash('الرصيد الافتتاحي غير صحيح', 'error')
-            return redirect(url_for('open_shift'))
-        if opening_val < 0:
-            flash('الرصيد الافتتاحي لا يمكن أن يكون سالباً', 'error')
-            return redirect(url_for('open_shift'))
-        shift = CashShift(
-            shift_number=get_next_number('SFT', CashShift, 'shift_number'),
-            user_id=current_user.id,
-            branch_id=getattr(current_user, 'branch_id', None),
-            opening_balance=opening_val,
-            notes=request.form.get('notes'),
-            status='open',
-        )
-        db.session.add(shift)
-        try:
-            db.session.commit()
-        except SQLAlchemyError:
-            db.session.rollback()
-            flash('حدث خطأ غير متوقع أثناء فتح الوردية — لم يتم حفظ أي بيانات', 'error')
-            return redirect(url_for('open_shift'))
-        flash(f'تم فتح الوردية {shift.shift_number} بنجاح — بالتوفيق!', 'success')
-        return redirect(url_for('shift_detail', id=shift.id))
-    return render_template('shift_open.html')
+    f = request.files.get('file')
+    if not f or not f.filename:
+        flash('يرجى اختيار ملف إكسيل (.xlsx)', 'error')
+        return redirect(url_for('import_suppliers'))
+    if not f.filename.lower().endswith(('.xlsx', '.xlsm')):
+        flash('امتداد الملف يجب أن يكون .xlsx', 'error')
+        return redirect(url_for('import_suppliers'))
 
-
-@app.route('/shifts/<int:id>')
-@login_required
-def shift_detail(id):
-    shift = CashShift.query.get_or_404(id)
-    if shift.user_id != current_user.id and current_user.role not in ('admin', 'manager', 'developer'):
-        flash('لا صلاحية لعرض هذه الوردية', 'error')
-        return redirect(url_for('shifts'))
-    cash_sales_qs = Sale.query.filter_by(shift_id=shift.id, payment_method='cash').order_by(Sale.date.asc()).all()
-    other_sales_qs = Sale.query.filter(Sale.shift_id == shift.id, Sale.payment_method != 'cash').order_by(Sale.date.asc()).all()
-    expenses_qs = Expense.query.filter_by(shift_id=shift.id).order_by(Expense.date.asc()).all()
-    cash_sales_total = sum(float(s.paid or 0) for s in cash_sales_qs)
-    other_sales_total = sum(float(s.paid or 0) for s in other_sales_qs)
-    expenses_total = sum(float(e.amount or 0) for e in expenses_qs)
-    expected_now = float(shift.opening_balance or 0) + cash_sales_total - expenses_total
-    return render_template(
-        'shift_detail.html', shift=shift,
-        cash_sales=cash_sales_qs, other_sales=other_sales_qs, expenses=expenses_qs,
-        cash_sales_total=cash_sales_total, other_sales_total=other_sales_total,
-        expenses_total=expenses_total, expected_now=expected_now,
-    )
-
-
-@app.route('/shifts/<int:id>/close', methods=['POST'])
-@login_required
-def close_shift(id):
-    shift = CashShift.query.get_or_404(id)
-    if shift.user_id != current_user.id and current_user.role not in ('admin', 'manager', 'developer'):
-        flash('لا صلاحية لقفل هذه الوردية', 'error')
-        return redirect(url_for('shifts'))
-    if shift.status != 'open':
-        flash('الوردية دي مقفولة بالفعل', 'error')
-        return redirect(url_for('shift_detail', id=shift.id))
+    tmp = os.path.join(_INSTANCE_DIR, '_suppliers_import_upload.xlsx')
     try:
-        actual_val = float(request.form.get('actual_cash') or 0)
-    except (TypeError, ValueError):
-        flash('قيمة الكاش الفعلي غير صحيحة', 'error')
-        return redirect(url_for('shift_detail', id=shift.id))
-    if actual_val < 0:
-        flash('قيمة الكاش الفعلي لا يمكن أن تكون سالبة', 'error')
-        return redirect(url_for('shift_detail', id=shift.id))
-    expected = compute_shift_expected_cash(shift)
-    shift.expected_cash = expected
-    shift.actual_cash = actual_val
-    shift.difference = actual_val - expected
-    shift.close_notes = request.form.get('close_notes')
-    shift.status = 'closed'
-    shift.closed_at = datetime.utcnow()
-    try:
+        f.save(tmp)
+        wb = openpyxl.load_workbook(tmp, data_only=True)
+        ws = wb.worksheets[0]
+        rows_iter = ws.iter_rows(values_only=True)
+        try:
+            header_row = next(rows_iter)
+        except StopIteration:
+            flash('الملف فارغ', 'error')
+            return redirect(url_for('import_suppliers'))
+        cols = _match_entity_import_columns(header_row, _SUPPLIER_IMPORT_HEADER_ALIASES)
+        if 'name' not in cols:
+            # لم يتم التعرّف على عمود الاسم بالعنوان — نلتقط أوسع عمود نصي غير رقمي بالكامل
+            # (يتوافق مع ملفات بسيطة من عمودين: «م» ثم اسم المورد بلا عنوان مطابق).
+            candidate_idx = None
+            for idx in range(len(header_row)):
+                title = (str(header_row[idx]).strip() if header_row[idx] is not None else '')
+                if len(title) >= 3 and idx not in cols.values():
+                    candidate_idx = idx
+                    break
+            if candidate_idx is None and len(header_row) >= 2:
+                candidate_idx = len(header_row) - 1
+            if candidate_idx is None:
+                flash('تعذّر التعرّف على عمود «اسم المورد» في الملف — تأكد من وجود صف عناوين صحيح', 'error')
+                return redirect(url_for('import_suppliers'))
+            cols['name'] = candidate_idx
+
+        existing_by_name = {}
+        for s in Supplier.query.all():
+            existing_by_name.setdefault((s.name or '').strip(), s)
+
+        added = 0
+        skipped = 0
+        errors = []
+        for row_num, row in enumerate(rows_iter, start=2):
+            if row is None or all(v is None or str(v).strip() == '' for v in row):
+                continue
+            try:
+                name_idx = cols['name']
+                name_val = row[name_idx] if name_idx < len(row) else None
+                name_val = (str(name_val).strip() if name_val is not None else '')
+                if not name_val:
+                    skipped += 1
+                    continue
+                if name_val in existing_by_name:
+                    skipped += 1
+                    continue
+
+                def _txt(key):
+                    idx = cols.get(key)
+                    if idx is None or idx >= len(row):
+                        return None
+                    v = row[idx]
+                    if v in (None, ''):
+                        return None
+                    return str(v).strip()
+
+                code_val = _txt('code') or allocate_entity_code('S', Supplier)
+                supplier = Supplier(code=code_val, name=name_val, phone=_txt('phone'),
+                                     email=_txt('email'), address=_txt('address'))
+                db.session.add(supplier)
+                db.session.flush()
+                existing_by_name[name_val] = supplier
+                added += 1
+            except Exception as e:
+                skipped += 1
+                errors.append(f'صف {row_num}: {e}')
+
         db.session.commit()
-    except SQLAlchemyError:
+        msg = f'تم استيراد {added} مورد جديد'
+        if skipped:
+            msg += f' — وتم تجاوز {skipped} صف (فارغ أو مكرر أو به خطأ)'
+        flash(msg, 'success' if added else 'error')
+        if errors:
+            flash('أول الأخطاء: ' + ' | '.join(errors[:5]), 'error')
+        return redirect(url_for('suppliers'))
+    except Exception as e:
         db.session.rollback()
-        flash('حدث خطأ غير متوقع أثناء قفل الوردية — لم يتم حفظ أي بيانات', 'error')
-        return redirect(url_for('shift_detail', id=shift.id))
-    diff = shift.difference
-    if abs(diff) < 0.01:
-        flash(f'تم قفل الوردية {shift.shift_number} بنجاح — الكاش مطابق تمامًا', 'success')
-    elif diff > 0:
-        flash(f'تم قفل الوردية {shift.shift_number} — فيه زيادة قدرها {diff:,.2f}', 'warning')
-    else:
-        flash(f'تم قفل الوردية {shift.shift_number} — فيه عجز قدره {abs(diff):,.2f}', 'error')
-    return redirect(url_for('shift_detail', id=shift.id))
+        flash(f'فشل استيراد الملف: {e}', 'error')
+        return redirect(url_for('import_suppliers'))
+    finally:
+        try:
+            if os.path.isfile(tmp):
+                os.remove(tmp)
+        except OSError:
+            pass
 
 
+# ===== SALES =====
 @app.route('/sales')
 @login_required
 def sales():
@@ -2878,11 +3300,6 @@ def sales():
 @app.route('/sales/new', methods=['GET', 'POST'])
 @login_required
 def new_sale():
-    # ── إجبارية الوردية: لا بيع بدون وردية مفتوحة (مثل Square / Toast POS) ──
-    _current_shift = get_open_shift_for_user(current_user.id)
-    if not _current_shift:
-        flash('يجب فتح وردية أولاً قبل إجراء أي عملية بيع — اضغط على «فتح وردية جديدة» للمتابعة', 'error')
-        return redirect(url_for('open_shift'))
     if request.method == 'POST':
         customer_id = request.form.get('customer_id') or None
         warehouse_id = request.form.get('warehouse_id') or None
@@ -2927,7 +3344,6 @@ def new_sale():
         payment_method_val = (request.form.get('payment_method') or 'cash').strip().lower()
         if payment_method_val not in ('cash', 'card', 'transfer', 'other'):
             payment_method_val = 'cash'
-        _open_shift = get_open_shift_for_user(current_user.id)
 
         # Merge duplicated products into one line to prevent duplicate items per invoice.
         merged = {}
@@ -2966,7 +3382,6 @@ def new_sale():
                     customer_id=customer_id,
                     warehouse_id=warehouse_id,
                     user_id=current_user.id,
-                    shift_id=(_open_shift.id if _open_shift else None),
                     payment_method=payment_method_val,
                     discount=total_discount_val,
                     tax=0,
@@ -4263,7 +4678,6 @@ def add_expense():
             amount=amount_val,
             branch_id=request.form.get('branch_id') or None,
             user_id=current_user.id,
-            shift_id=(get_open_shift_for_user(current_user.id).id if get_open_shift_for_user(current_user.id) else None),
         )
         db.session.add(expense)
         try:
@@ -4433,6 +4847,7 @@ def users():
     branches = Branch.query.filter_by(is_active=True).all()
     return render_template(
         'users.html', users=users, branches=branches,
+        assignable_roles=assignable_roles_for(current_user),
         default_perms_by_role=default_permissions_json_for_editor(current_user))
 
 @app.route('/settings/users/add', methods=['POST'])
@@ -4443,8 +4858,8 @@ def add_user():
     if not role:
         flash('يرجى اختيار الدور الوظيفي', 'error')
         return redirect(url_for('users'))
-    if role == 'developer' and current_user.role != 'developer':
-        flash('لا يمكن إنشاء حساب مطوّر النظام إلا من حساب المطوّر', 'error')
+    if role not in assignable_roles_for(current_user):
+        flash('لا يمكنك إنشاء حساب بهذا الدور — يتجاوز صلاحياتك الخاصة', 'error')
         return redirect(url_for('users'))
     username_val = (request.form.get('username') or '').strip()
     full_name_val = request.form.get('full_name')
@@ -4490,12 +4905,25 @@ def edit_user(id):
     if u.role == 'developer' and current_user.role != 'developer':
         flash('غير مسموح بتعديل هذا الحساب', 'error')
         return redirect(url_for('users'))
+    # لا يجوز لمستخدم (غير أدمن/مطوّر) تعديل أي بيانات لحساب في نفس رتبته أو أعلى
+    # (كلمة المرور، التفعيل، الصلاحيات...) إلا حسابه الخاص — يمنع مثلاً مشرفاً من
+    # تغيير كلمة مرور حساب أدمن آخر أو تعطيله.
+    if (u.id != current_user.id
+            and getattr(current_user, 'role', None) not in ('admin', 'developer')
+            and ROLE_RANK.get(u.role, 1) >= ROLE_RANK.get(getattr(current_user, 'role', None), 1)):
+        flash('غير مسموح بتعديل حساب في نفس مستواك أو أعلى', 'error')
+        return redirect(url_for('users'))
     if request.method == 'POST':
         old_role = u.role
         role = request.form.get('role', u.role)
-        if role == 'developer' and current_user.role != 'developer':
-            flash('لا يمكن تعيين دور مطوّر النظام', 'error')
-            return redirect(url_for('edit_user', id=id))
+        if role != old_role:
+            if role not in assignable_roles_for(current_user):
+                flash('لا يمكنك تعيين هذا الدور — يتجاوز صلاحياتك الخاصة', 'error')
+                return redirect(url_for('edit_user', id=id))
+            if (getattr(current_user, 'role', None) not in ('admin', 'developer')
+                    and ROLE_RANK.get(old_role, 1) >= ROLE_RANK.get(current_user.role, 1)):
+                flash('لا يمكنك تعديل دور حساب في نفس مستواك أو أعلى', 'error')
+                return redirect(url_for('edit_user', id=id))
         u.full_name = request.form.get('full_name')
         u.role = role
         u.branch_id = request.form.get('branch_id') or None
@@ -4508,11 +4936,14 @@ def edit_user(id):
             u.permissions = None
         else:
             perms = request.form.getlist('perm')
+            always_keep = frozenset()
             if current_user.role != 'developer':
+                # نحافظ على كل صلاحية كانت محفوظة للمستخدم ولا يملك المُحرِّر الحالي
+                # رؤيتها/منحها (مثل صلاحيات المطوّر أو صلاحية لا يملكها المُحرِّر نفسه)
+                # بدلاً من حذفها بصمت لمجرد أن هذا المُحرِّر لا يراها في النموذج.
                 oldp = _perm_list_from_user(u) or set()
-                keep_d = [p for p in oldp if p in DEVELOPER_ONLY_PERMS]
-                perms = [p for p in perms if p not in DEVELOPER_ONLY_PERMS] + keep_d
-            stored = _permissions_form_to_stored(perms, role, keys_visible)
+                always_keep = frozenset(p for p in oldp if p not in keys_visible)
+            stored = _permissions_form_to_stored(perms, role, keys_visible, always_keep=always_keep)
             u.permissions = json.dumps(stored, ensure_ascii=False) if stored else None
         db.session.commit()
         flash('تم حفظ بيانات المستخدم', 'success')
@@ -4522,6 +4953,7 @@ def edit_user(id):
     selected_perms = effective_selected_permissions_for_form(u, keys_visible)
     return render_template(
         'user_edit.html', u=u, branches=branches, selected_perms=selected_perms,
+        assignable_roles=assignable_roles_for(current_user),
         default_perms_by_role=default_permissions_json_for_editor(current_user))
 
 @app.route('/settings/branches')
@@ -5290,7 +5722,6 @@ def connected_users_force_logout(user_id):
         return redirect(url_for('connected_users_page'))
     target = User.query.get_or_404(user_id)
     # ترتيب الصلاحيات: developer > admin > manager > user
-    ROLE_RANK = {'developer': 4, 'admin': 3, 'manager': 2, 'user': 1}
     my_rank     = ROLE_RANK.get(current_user.role, 1)
     target_rank = ROLE_RANK.get(target.role, 1)
     # لا يمكن إخراج مستخدم له نفس الرتبة أو أعلى
@@ -5306,7 +5737,7 @@ def connected_users_force_logout(user_id):
 @app.route('/inventory/memos')
 @login_required
 def inventory_memos_list():
-    if not user_can(current_user, 'inventory'):
+    if not user_can(current_user, 'inventory_memos'):
         flash('لا صلاحية', 'error')
         return redirect(safe_home_url_for(current_user))
     memos = InventoryMemo.query.options(
@@ -5320,7 +5751,7 @@ def inventory_memos_list():
 @app.route('/inventory/memos/issue', methods=['GET', 'POST'])
 @login_required
 def inventory_memo_issue():
-    if not user_can(current_user, 'inventory'):
+    if not user_can(current_user, 'inventory_memos'):
         flash('لا صلاحية', 'error')
         return redirect(safe_home_url_for(current_user))
     if request.method == 'POST':
@@ -5410,7 +5841,7 @@ def inventory_memo_issue():
 @app.route('/inventory/memos/receive', methods=['GET', 'POST'])
 @login_required
 def inventory_memo_receive():
-    if not user_can(current_user, 'inventory'):
+    if not user_can(current_user, 'inventory_memos'):
         flash('لا صلاحية', 'error')
         return redirect(safe_home_url_for(current_user))
     if request.method == 'POST':
@@ -5487,7 +5918,7 @@ def inventory_memo_receive():
 @app.route('/inventory/memos/<int:id>')
 @login_required
 def inventory_memo_detail(id):
-    if not user_can(current_user, 'inventory'):
+    if not user_can(current_user, 'inventory_memos'):
         flash('لا صلاحية', 'error')
         return redirect(safe_home_url_for(current_user))
     memo = InventoryMemo.query.options(
@@ -5502,7 +5933,7 @@ def inventory_memo_detail(id):
 @app.route('/inventory/memos/<int:id>/print')
 @login_required
 def inventory_memo_print(id):
-    if not user_can(current_user, 'inventory'):
+    if not user_can(current_user, 'inventory_memos'):
         flash('لا صلاحية', 'error')
         return redirect(safe_home_url_for(current_user))
     memo = InventoryMemo.query.options(
@@ -5522,7 +5953,7 @@ def inventory_memo_print(id):
 @app.route('/inventory/memos/<int:id>/delete', methods=['POST'])
 @login_required
 def inventory_memo_delete(id):
-    if not user_can(current_user, 'inventory'):
+    if not user_can(current_user, 'inventory_memos'):
         flash('لا صلاحية', 'error')
         return redirect(safe_home_url_for(current_user))
     memo = InventoryMemo.query.options(joinedload(InventoryMemo.items)).get_or_404(id)
@@ -6388,6 +6819,10 @@ def toggle_user(id):
     if user.role == 'developer' and current_user.role != 'developer':
         flash('غير مسموح بتعديل هذا الحساب', 'error')
         return redirect(url_for('users'))
+    if (getattr(current_user, 'role', None) not in ('admin', 'developer')
+            and ROLE_RANK.get(user.role, 1) >= ROLE_RANK.get(getattr(current_user, 'role', None), 1)):
+        flash('غير مسموح بتعديل حساب في نفس مستواك أو أعلى', 'error')
+        return redirect(url_for('users'))
     if user.id == current_user.id:
         flash('لا يمكنك تعطيل حسابك الخاص', 'error')
     else:
@@ -6410,6 +6845,10 @@ def delete_user_account(id):
         return redirect(url_for('users'))
     if u.role == 'developer' and current_user.role != 'developer':
         flash('غير مسموح بحذف هذا الحساب', 'error')
+        return redirect(url_for('users'))
+    if (getattr(current_user, 'role', None) not in ('admin', 'developer')
+            and ROLE_RANK.get(u.role, 1) >= ROLE_RANK.get(getattr(current_user, 'role', None), 1)):
+        flash('غير مسموح بحذف حساب في نفس مستواك أو أعلى', 'error')
         return redirect(url_for('users'))
     try:
         db.session.delete(u)
@@ -6438,6 +6877,28 @@ def report_expenses():
     return render_template('report_expenses.html',
         expenses=expenses, by_category=by_category,
         total=total, date_from=date_from, date_to=date_to)
+
+
+# ===== EXCEL EXPORT BLUEPRINT (excel_export.py) =====
+# بنحقن مراجع db والموديلات مباشرة (init_models) بدل "from app import ..."
+# جوه excel_export.py، لأن الاستيراد ده كان بيخلي بايثون ينفّذ app.py من
+# جديد لو كان شغّال كـ __main__ (مثلاً عند تشغيل python app.py على
+# وندوز)، فيتكوّن تطبيق Flask ثاني وكائن SQLAlchemy(app) ثاني، وهو سبب:
+# "RuntimeError: The current Flask app is not registered with this
+# 'SQLAlchemy' instance".
+try:
+    from excel_export import excel_bp, init_models
+    init_models(
+        db=db, Customer=Customer, Supplier=Supplier, Product=Product,
+        Stock=Stock, Warehouse=Warehouse,
+        Sale=Sale, SaleItem=SaleItem, SaleReturn=SaleReturn, SaleReturnItem=SaleReturnItem,
+        Purchase=Purchase, PurchaseItem=PurchaseItem,
+        PurchaseReturn=PurchaseReturn, PurchaseReturnItem=PurchaseReturnItem,
+        get_app_settings_dict=get_app_settings_dict, DEFAULT_SETTINGS=DEFAULT_SETTINGS,
+    )
+    app.register_blueprint(excel_bp)
+except Exception as _e:  # pragma: no cover
+    _logger.warning("تعذّر تحميل وحدة تصدير إكسيل: %s", _e)
 
 
 def _open_browser():
