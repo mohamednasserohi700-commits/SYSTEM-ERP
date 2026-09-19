@@ -633,7 +633,7 @@ def user_can(user, perm: str) -> bool:
         return True
     if user.role == 'user':
         return perm in {
-            'dashboard', 'sales', 'purchases', 'returns', 'inventory', 'transfers',
+            'dashboard', 'sales', 'purchases', 'returns', 'inventory', 'inventory_memos', 'transfers',
             'customers', 'suppliers', 'expenses', 'products', 'product_add', 'categories', 'reports',
         }
     if user.role in ('hr_manager', 'hr_officer', 'payroll_officer', 'department_manager', 'employee'):
@@ -6819,16 +6819,16 @@ def toggle_user(id):
     if user.role == 'developer' and current_user.role != 'developer':
         flash('غير مسموح بتعديل هذا الحساب', 'error')
         return redirect(url_for('users'))
+    if user.id == current_user.id:
+        flash('لا يمكنك تعطيل حسابك الخاص', 'error')
+        return redirect(url_for('users'))
     if (getattr(current_user, 'role', None) not in ('admin', 'developer')
             and ROLE_RANK.get(user.role, 1) >= ROLE_RANK.get(getattr(current_user, 'role', None), 1)):
         flash('غير مسموح بتعديل حساب في نفس مستواك أو أعلى', 'error')
         return redirect(url_for('users'))
-    if user.id == current_user.id:
-        flash('لا يمكنك تعطيل حسابك الخاص', 'error')
-    else:
-        user.is_active = not user.is_active
-        db.session.commit()
-        flash(f'تم {"تفعيل" if user.is_active else "تعطيل"} المستخدم {user.username}', 'success')
+    user.is_active = not user.is_active
+    db.session.commit()
+    flash(f'تم {"تفعيل" if user.is_active else "تعطيل"} المستخدم {user.username}', 'success')
     return redirect(url_for('users'))
 
 
