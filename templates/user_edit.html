@@ -73,6 +73,7 @@
     var roleSel = document.querySelector('select[name="role"]');
     if (!roleSel) return;
     function apply() {
+        if (!Object.prototype.hasOwnProperty.call(MAP, roleSel.value)) return; // لا نملك افتراضيات هذا الدور (خارج صلاحياتك) — لا نلمس التحديدات الحالية
         var keys = MAP[roleSel.value] || [];
         document.querySelectorAll('input[name="perm"]').forEach(function (cb) {
             cb.checked = keys.indexOf(cb.value) >= 0;
