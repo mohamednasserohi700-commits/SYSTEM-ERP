@@ -12,14 +12,10 @@
         th, td { border: 1px solid #ccc; padding: 8px 10px; text-align: right; }
         th { background: #222; color: #fff; }
         .sum { margin-top: 16px; font-weight: 800; font-size: 15px; }
-        {% include '_print_thermal_css.html' %}
-        body.pos .sum { font-size: 12px; margin-top: 8px; }
-        body.pos .meta { font-size: 10.5px; margin-bottom: 8px; }
     </style>
 </head>
-<body class="{% if (print_mode|default('normal')) == 'pos' or (print_paper_size|default('A4')) in ('80mm','58mm') %}pos{% endif %} {% if (print_paper_size|default('A4')) == '58mm' %}pos58{% endif %}">
-    <div class="sheet">
-    <p class="no-print"><button type="button" onclick="window.print()">طباعة</button></p>
+<body>
+    <p><button type="button" onclick="window.print()">طباعة</button></p>
     <h1>مذكرة مخزون — {{ memo.memo_number }}</h1>
     <div class="meta">
         {% if memo.memo_type == 'issue_production' %}<strong>صرف مواد خام</strong>{% else %}<strong>استلام تام</strong>{% endif %}
@@ -28,14 +24,14 @@
         — {{ memo.date.strftime('%Y/%m/%d %H:%M') }}
     </div>
     <table>
-        <thead><tr><th>#</th><th>صنف</th><th>كمية</th><th class="col-hide-pos">وحدة</th></tr></thead>
+        <thead><tr><th>#</th><th>صنف</th><th>كمية</th><th>وحدة</th></tr></thead>
         <tbody>
             {% for it in memo.items %}
             <tr>
                 <td>{{ loop.index }}</td>
                 <td>{{ it.product.name if it.product else '—' }}</td>
                 <td>{{ it.quantity }}</td>
-                <td class="col-hide-pos">{{ it.unit_note or (it.product.unit if it.product else '') }}</td>
+                <td>{{ it.unit_note or (it.product.unit if it.product else '') }}</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -45,14 +41,5 @@
         {% if memo.memo_type == 'receive_production' %}(مستلمة){% else %}(مصروفة){% endif %}
     </div>
     {% if memo.notes %}<p style="margin-top:12px;">ملاحظات: {{ memo.notes }}</p>{% endif %}
-    </div>
-<script>
-(function(){
-    var params = new URLSearchParams(window.location.search);
-    if(params.get('autoprint') === '1'){
-        window.onload = function(){ window.print(); };
-    }
-})();
-</script>
 </body>
 </html>

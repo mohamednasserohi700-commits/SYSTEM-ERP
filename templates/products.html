@@ -4,14 +4,8 @@
 {% block page_title %}إدارة الأصناف{% endblock %}
 {% block breadcrumb %}قائمة الأصناف والمنتجات{% endblock %}
 {% block topbar_actions %}
-<a href="{{ url_for('excel_export.export_products', q=q) }}" class="btn btn-success"><i class="fas fa-file-excel"></i> تصدير إكسيل</a>
 <a href="{{ url_for('barcode_labels') }}" class="btn btn-outline"><i class="fas fa-barcode"></i> طباعة ملصقات باركود</a>
-{% if current_user.role == 'developer' %}
-<a href="{{ url_for('import_products') }}" class="btn btn-outline" title="أداة للمطوّر فقط"><i class="fas fa-file-excel"></i> استيراد من إكسيل</a>
-{% endif %}
-{% if can('product_add') %}
 <a href="{{ url_for('add_product') }}" class="btn btn-primary"><i class="fas fa-plus"></i> إضافة صنف</a>
-{% endif %}
 {% endblock %}
 {% block content %}
 <div class="card" style="margin-bottom: 16px;">

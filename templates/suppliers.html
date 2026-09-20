@@ -2,7 +2,7 @@
 {% set block_icon = 'fas fa-truck' %}
 {% block title %}الموردون{% endblock %}
 {% block page_title %}إدارة الموردين{% endblock %}
-{% block topbar_actions %}<a href="{{ url_for('excel_export.export_suppliers', q=q) }}" class="btn btn-success"><i class="fas fa-file-excel"></i> تصدير إكسيل</a> <a href="{{ url_for('add_supplier') }}" class="btn btn-primary"><i class="fas fa-plus"></i> إضافة مورد</a> {% if current_user.role == 'developer' %}<a href="{{ url_for('import_suppliers') }}" class="btn btn-outline" title="أداة للمطوّر فقط"><i class="fas fa-file-excel"></i> استيراد من إكسيل</a>{% endif %}{% endblock %}
+{% block topbar_actions %}<a href="{{ url_for('excel_export.export_suppliers', q=q) }}" class="btn btn-success"><i class="fas fa-file-excel"></i> تصدير إكسيل</a> <a href="{{ url_for('add_supplier') }}" class="btn btn-primary"><i class="fas fa-plus"></i> إضافة مورد</a>{% endblock %}
 {% block content %}
 <div class="card"><div class="table-container"><table>
 <thead><tr><th>الكود</th><th>الاسم</th><th>الهاتف</th><th>الرصيد</th><th>الإجراءات</th></tr></thead>
@@ -12,12 +12,12 @@
 <td>{{ s.phone or '—' }}</td>
 <td style="color:{% if s.balance > 0 %}var(--danger){% elif s.balance < 0 %}var(--success){% else %}var(--text-muted){% endif %};font-weight:700;">{{ "{:,.2f}".format(s.balance) }}</td>
 <td style="white-space:nowrap;">
-                <a href="{{ url_for('supplier_statement', id=s.id) }}" class="btn btn-warning btn-xs"><i class="fas fa-file-alt"></i> كشف</a>
-                <a href="{{ url_for('supplier_statement_detailed', id=s.id) }}" class="btn btn-info btn-xs" title="كشف حساب تفصيلي"><i class="fas fa-list-alt"></i> تفصيلي</a>
-                <a href="{{ url_for('edit_supplier', id=s.id) }}" class="btn btn-outline btn-xs" title="تعديل"><i class="fas fa-edit"></i></a>
+                <a href="{{ url_for('supplier_statement', id=s.id) }}" class="btn btn-warning btn-xs" title="كشف حساب" style="display:inline-flex;align-items:center;gap:4px;"><i class="fas fa-file-alt"></i><span>كشف</span></a>
+                <a href="{{ url_for('supplier_statement_detailed', id=s.id) }}" class="btn btn-info btn-xs" title="كشف حساب تفصيلي" style="display:inline-flex;align-items:center;gap:4px;"><i class="fas fa-list-alt"></i><span>تفصيلي</span></a>
+                <a href="{{ url_for('edit_supplier', id=s.id) }}" class="btn btn-outline btn-xs" title="تعديل" style="display:inline-flex;align-items:center;gap:4px;"><i class="fas fa-edit"></i><span>تعديل</span></a>
                 {% if can('record_delete') %}
                 <form method="POST" action="{{ url_for('delete_supplier', id=s.id) }}" style="display:inline;" onsubmit="return confirm('حذف هذا المورد؟');">
-                    <button type="submit" class="btn btn-danger btn-xs" title="حذف"><i class="fas fa-trash"></i></button>
+                    <button type="submit" class="btn btn-danger btn-xs" title="حذف" style="display:inline-flex;align-items:center;gap:4px;"><i class="fas fa-trash"></i><span>حذف</span></button>
                 </form>
                 {% endif %}
             </td>

@@ -114,6 +114,26 @@
     </div>
 </div>
 {% endif %}
+
+{% if edit_logs %}
+<div class="card" style="margin-top: 20px;">
+    <div class="card-header"><div class="card-title"><i class="fas fa-history"></i> سجل تعديلات الفاتورة</div></div>
+    <div class="card-body" style="padding:0;">
+        <table class="table" style="margin:0;">
+            <thead><tr><th>التاريخ والوقت</th><th>المستخدم</th><th>التغييرات</th></tr></thead>
+            <tbody>
+            {% for log in edit_logs %}
+                <tr>
+                    <td style="white-space:nowrap;">{{ log.date.strftime('%Y/%m/%d %H:%M') }}</td>
+                    <td style="white-space:nowrap;">{{ log.user.username if log.user else '-' }}</td>
+                    <td>{{ log.summary }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
