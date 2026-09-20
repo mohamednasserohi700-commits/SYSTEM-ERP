@@ -119,7 +119,7 @@
         <tbody>
             {% for e in expenses %}
             <tr>
-                <td>{{ e.date.strftime('%Y/%m/%d') }}</td>
+                <td>{{ e.date | to_cairo_time('%Y/%m/%d') }}</td>
                 <td><span class="badge badge-warning">{{ e.category }}</span></td>
                 <td>{{ e.description or '—' }}</td>
                 <td style="color:var(--danger);font-weight:700;">{{ "{:,.2f}".format(e.amount) }}</td>

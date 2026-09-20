@@ -3,7 +3,11 @@
 {% block title %}المشتريات{% endblock %}
 {% block page_title %}سجل المشتريات{% endblock %}
 {% block breadcrumb %}قائمة فواتير المشتريات{% endblock %}
-{% block topbar_actions %}<a href="{{ url_for('new_purchase') }}" class="btn btn-primary"><i class="fas fa-plus"></i> فاتورة مشتريات جديدة</a>{% endblock %}
+{% block topbar_actions %}
+<button type="button" onclick="printPurchasesToday()" class="btn btn-outline"><i class="fas fa-print"></i> طباعة مشتريات اليوم</button>
+<button type="button" onclick="openPurchasesRangeModal()" class="btn btn-outline"><i class="fas fa-calendar-alt"></i> طباعة حسب الفترة</button>
+<a href="{{ url_for('new_purchase') }}" class="btn btn-primary"><i class="fas fa-plus"></i> فاتورة مشتريات جديدة</a>
+{% endblock %}
 {% block content %}
 <div class="card">
     <div class="table-container"><table>
@@ -23,7 +27,7 @@
                         {{ "{:,.2f}".format(p.remaining) }}
                     {% endif %}
                 </td>
-                <td style="color:var(--text-muted);">{{ p.date.strftime('%Y/%m/%d') }}</td>
+                <td style="color:var(--text-muted);">{{ p.date | to_cairo_time('%Y/%m/%d') }}</td>
                 <td style="white-space:nowrap;">
                     <a href="{{ url_for('purchase_detail', id=p.id) }}" class="btn btn-outline btn-xs"><i class="fas fa-eye"></i></a>
                     {% if can('sales_purchases_delete') %}
@@ -47,4 +51,60 @@
     {% endfor %}
     {% if purchases.has_next %}<a href="{{ url_for('purchases', page=purchases.next_num) }}" class="page-link">التالي</a>{% endif %}
 </div>
+
+<!-- Purchases Print by Date Range Modal -->
+<div class="modal-overlay" id="purchasesRangeModal">
+    <div class="modal">
+        <div class="modal-title"><i class="fas fa-print"></i> طباعة مشتريات حسب الفترة</div>
+        <div class="form-group">
+            <label class="form-label">من تاريخ</label>
+            <input type="date" id="purchasesRangeFrom" class="form-control">
+        </div>
+        <div class="form-group">
+            <label class="form-label">إلى تاريخ</label>
+            <input type="date" id="purchasesRangeTo" class="form-control">
+        </div>
+        <div class="modal-actions">
+            <button type="button" onclick="closePurchasesRangeModal()" class="btn btn-outline">إلغاء</button>
+            <button type="button" onclick="submitPurchasesRangePrint()" class="btn btn-primary"><i class="fas fa-print"></i> طباعة</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function todayISO() {
+    var d = new Date();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + m + '-' + day;
+}
+function printPurchasesToday() {
+    var t = todayISO();
+    window.open('{{ url_for("purchases_print_range") }}?date_from=' + t + '&date_to=' + t, '_blank');
+}
+function openPurchasesRangeModal() {
+    var t = todayISO();
+    document.getElementById('purchasesRangeFrom').value = t;
+    document.getElementById('purchasesRangeTo').value = t;
+    document.getElementById('purchasesRangeModal').classList.add('open');
+}
+function closePurchasesRangeModal() {
+    document.getElementById('purchasesRangeModal').classList.remove('open');
+}
+function submitPurchasesRangePrint() {
+    var from = document.getElementById('purchasesRangeFrom').value;
+    var to = document.getElementById('purchasesRangeTo').value;
+    if (!from || !to) {
+        alert('يرجى تحديد تاريخ البداية والنهاية');
+        return;
+    }
+    window.open('{{ url_for("purchases_print_range") }}?date_from=' + from + '&date_to=' + to, '_blank');
+    closePurchasesRangeModal();
+}
+document.getElementById('purchasesRangeModal').addEventListener('click', function (e) {
+    if (e.target === this) closePurchasesRangeModal();
+});
+</script>
 {% endblock %}

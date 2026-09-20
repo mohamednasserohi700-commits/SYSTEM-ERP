@@ -59,7 +59,7 @@
     <div class="sheet">
     <div class="no-print" style="margin-bottom:16px;"><button onclick="window.print()">طباعة</button></div>
     <h1>مرتجع مشتريات — {{ ret.invoice_number }}</h1>
-    <p>فاتورة شراء: {{ ret.purchase.invoice_number if ret.purchase else '—' }} — {{ ret.date.strftime('%Y/%m/%d') }}</p>
+    <p>فاتورة شراء: {{ ret.purchase.invoice_number if ret.purchase else '—' }} — {{ ret.date | to_cairo_time('%Y/%m/%d') }}</p>
     <table>
         <thead><tr><th>صنف</th><th>كمية مرتجعة</th><th>سعر</th><th>خصم %</th><th>خصم إضافي %</th><th>إجمالي</th></tr></thead>
         <tbody>

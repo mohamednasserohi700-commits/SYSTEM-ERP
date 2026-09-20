@@ -92,7 +92,7 @@
         <div style="text-align:left;">
             <div class="invoice-label">كشف حساب مورد</div>
             <div class="invoice-num">{{ supplier.code or '' }}</div>
-            <div class="invoice-date">تاريخ الطباعة: {{ printed_at.strftime('%Y/%m/%d %H:%M') }}</div>
+            <div class="invoice-date">تاريخ الطباعة: {{ printed_at | to_cairo_date_time }}</div>
         </div>
     </div>
 
@@ -120,7 +120,7 @@
         {% for p in purchases %}
         <tr>
             <td>{{ p.invoice_number }}</td>
-            <td>{{ p.date.strftime('%Y/%m/%d') }}</td>
+            <td>{{ p.date | to_cairo_time('%Y/%m/%d') }}</td>
             <td>{{ "{:,.2f}".format(p.total) }}</td>
             <td>{{ "{:,.2f}".format(p.paid) }}</td>
             <td>{{ "{:,.2f}".format(p.remaining) }}</td>
@@ -137,7 +137,7 @@
         <tbody>
         {% for pay in payments %}
         <tr>
-            <td>{{ pay.date.strftime('%Y/%m/%d') }}</td>
+            <td>{{ pay.date | to_cairo_time('%Y/%m/%d') }}</td>
             <td>
                 {% if pay.amount < 0 %}مدين (عليه)
                 {% elif pay.notes and 'تحصيل من المورد' in pay.notes %}تحصيل

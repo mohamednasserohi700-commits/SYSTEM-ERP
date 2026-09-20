@@ -1,0 +1,236 @@
+{% set paper = print_paper_size|default('A4') %}
+{% set is_pos = (print_mode|default('normal') == 'pos') or (paper in ['80mm', '58mm']) %}
+{% set pos_w = '58mm' if paper == '58mm' else '80mm' %}
+{% set pos_inner = '52mm' if paper == '58mm' else '72mm' %}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>تقرير مشتريات {{ date_from }}{% if not is_single_day %} إلى {{ date_to }}{% endif %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Cairo', sans-serif; background: white; color: #1a1a1a; padding: 30px; font-size: 13px; }
+        .invoice { max-width: 950px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; padding-bottom: 20px; border-bottom: 2px solid #1a1a1a; }
+        .brand-name { font-family: 'Tajawal', sans-serif; font-size: 32px; font-weight: 900; color: #3b82f6; }
+        .brand-sub { font-size: 12px; color: #666; margin-top: 2px; }
+        .invoice-label { font-size: 22px; font-weight: 800; text-align: left; }
+        .invoice-num { font-size: 16px; font-weight: 700; color: #3b82f6; }
+        .invoice-date { font-size: 12px; color: #666; margin-top: 4px; }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 22px; max-width: 480px; }
+        .info-box { background: #f8f9fa; border-radius: 8px; padding: 14px 16px; }
+        .info-box label { font-size: 10px; color: #999; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 4px; }
+        .info-box .val { font-size: 17px; font-weight: 800; }
+        .info-box .sub { font-size: 11px; color: #666; }
+
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        thead { background: #1a1a1a; }
+        thead th { color: white; padding: 10px 12px; font-size: 12px; font-weight: 700; text-align: center; white-space: nowrap; }
+        tbody tr:nth-child(even) { background: #f8f9fa; }
+        tbody td { padding: 9px 12px; border-bottom: 1px solid #eee; font-size: 12.5px; text-align: center; }
+        .items-col { font-size: 11.5px; line-height: 1.6; min-width: 220px; }
+        .items-col .item-line { white-space: nowrap; }
+        .items-col .item-line + .item-line { margin-top: 2px; }
+        .items-col .product-code { font-size: 10px; color: #999; font-weight: 600; }
+        .qty-col { font-size: 11.5px; line-height: 1.6; text-align: center; white-space: nowrap; }
+        .qty-col .item-line + .item-line { margin-top: 2px; }
+        .price-col { font-size: 11.5px; line-height: 1.6; text-align: center; white-space: nowrap; }
+        .price-col .item-line + .item-line { margin-top: 2px; }
+        tfoot td { padding: 12px; font-weight: 800; font-size: 13.5px; border-top: 2px solid #1a1a1a; background: #eff6ff; text-align: center; }
+        .empty-row td { text-align: center; padding: 40px; color: #999; }
+
+        .footer { margin-top: 30px; text-align: center; font-size: 11px; color: #999; border-top: 1px solid #eee; padding-top: 16px; }
+
+        /* ===== POS thermal receipt (80mm / 58mm) ===== */
+        body.pos {
+            font-family: Cairo, Arial, sans-serif;
+            font-size: 12px;
+            padding: 2mm 1.5mm;
+            width: {{ pos_inner }};
+            margin: 0 auto;
+        }
+        body.pos .invoice { max-width: 100%; width: 100%; margin: 0; }
+        body.pos .header { flex-direction: column; align-items: center; text-align: center; gap: 2px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px dashed #000; }
+        body.pos .header > div:last-child { text-align: center !important; }
+        body.pos .brand-name { font-size: 16px; }
+        body.pos .brand-sub { font-size: 10px; }
+        body.pos .invoice-label { font-size: 14px; text-align: center; }
+        body.pos .invoice-num { font-size: 11px; }
+        body.pos .invoice-date { font-size: 10px; }
+        body.pos .summary-grid { display: block; margin-bottom: 6px; }
+        body.pos .info-box { background: none; padding: 3px 0; border-radius: 0; border-bottom: 1px dashed #ccc; display: flex; justify-content: space-between; align-items: baseline; }
+        body.pos .info-box label { font-size: 9px; letter-spacing: 0; margin-bottom: 0; }
+        body.pos .info-box .val { font-size: 12px; }
+        body.pos .info-box .sub { display: none; }
+        body.pos table { table-layout: auto; }
+        body.pos thead th { padding: 4px 3px; font-size: 10px; }
+        body.pos tbody td { padding: 4px 3px; font-size: 10px; border-bottom: 1px dashed #ccc; overflow-wrap: break-word; word-break: break-word; }
+        body.pos .opt-col { display: none; }
+        body.pos .items-col { font-size: 9px; }
+        body.pos .items-col .product-code { font-size: 8px; }
+        body.pos .qty-col { font-size: 9px; }
+        body.pos .price-col { font-size: 9px; }
+        body.pos tfoot td { font-size: 11px; padding: 6px 3px; }
+        body.pos .footer { font-size: 9px; margin-top: 8px; padding-top: 6px; }
+        body.pos.pos58 { font-size: 11px; }
+        body.pos.pos58 .brand-name { font-size: 14px; }
+        body.pos.pos58 thead th, body.pos.pos58 tbody td { font-size: 9px; padding: 3px 2px; }
+
+        @media print {
+            .no-print { display: none; }
+            {% if is_pos %}
+            @page { size: {{ pos_w }} 297mm; margin: 0; }
+            html, body { width: {{ pos_inner }} !important; margin: 0 auto !important; padding: 0 !important; background: #fff !important; }
+            {% else %}
+            @page { size: A4 portrait; margin: 8mm; }
+            body { padding: 6px; font-size: 11px; }
+            table { table-layout: auto; }
+            thead th { padding: 6px 4px; font-size: 10.5px; }
+            tbody td { padding: 6px 4px; font-size: 10.5px; }
+            .items-col { min-width: 0; font-size: 10px; }
+            .items-col .item-line { white-space: normal; }
+            .qty-col, .price-col { font-size: 10px; }
+            tfoot td { padding: 8px 4px; font-size: 12px; }
+            tbody tr { page-break-inside: avoid; }
+            thead { display: table-header-group; }
+            {% endif %}
+        }
+    </style>
+</head>
+<body class="{% if is_pos %}pos{% endif %} {% if paper == '58mm' %}pos58{% endif %}">
+<div class="invoice">
+    <div class="header">
+        <div>
+            <div class="brand-name">{{ app_brand_title | default('Silsal POS') }}</div>
+            <div class="brand-sub">{{ app_subtitle_brand | default('نظام إدارة أعمال ومحاسبة') }}</div>
+        </div>
+        <div style="text-align:left;">
+            <div class="invoice-label">تقرير المشتريات</div>
+            <div class="invoice-num">
+                {% if is_single_day %}
+                    يوم {{ date_from }}
+                {% else %}
+                    من {{ date_from }} إلى {{ date_to }}
+                {% endif %}
+            </div>
+            <div class="invoice-date">طُبع في: {{ generated_at | to_cairo_date_time }}</div>
+        </div>
+    </div>
+
+    <div class="summary-grid">
+        <div class="info-box">
+            <label>عدد الفواتير</label>
+            <div class="val">{{ purchases_list|length }}</div>
+        </div>
+        <div class="info-box">
+            <label>إجمالي المشتريات</label>
+            <div class="val">{{ "{:,.2f}".format(total_amount) }}</div>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>رقم الفاتورة</th>
+                <th>المورد</th>
+                <th>الأصناف / الكود</th>
+                <th>الكمية</th>
+                <th>سعر الوحدة</th>
+                <th class="opt-col">المخزن</th>
+                <th>الإجمالي</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in purchases_list %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td style="font-weight:700;color:#3b82f6;">{{ p.invoice_number }}</td>
+                <td>{{ p.supplier.name if p.supplier else '—' }}</td>
+                <td class="items-col">
+                    {% for item in p.items %}
+                    <div class="item-line">{{ item.product.name if item.product else '—' }}</div>
+                    <div class="product-code">{{ item.product.code if item.product and item.product.code else '' }}</div>
+                    {% else %}
+                    <span style="color:#999;">—</span>
+                    {% endfor %}
+                </td>
+                <td class="qty-col">
+                    {% for item in p.items %}
+                    <div class="item-line">{{ item.quantity }}</div>
+                    {% else %}
+                    <span style="color:#999;">—</span>
+                    {% endfor %}
+                </td>
+                <td class="price-col">
+                    {% for item in p.items %}
+                    <div class="item-line">{{ "{:,.2f}".format(item.price) }}</div>
+                    {% else %}
+                    <span style="color:#999;">—</span>
+                    {% endfor %}
+                </td>
+                <td class="opt-col">{{ p.warehouse.name if p.warehouse else '—' }}</td>
+                <td style="font-weight:700;">{{ "{:,.2f}".format(p.total) }}</td>
+            </tr>
+            {% else %}
+            <tr class="empty-row"><td colspan="8">لا توجد فواتير مشتريات في هذه الفترة</td></tr>
+            {% endfor %}
+        </tbody>
+        {% if purchases_list %}
+        <tfoot>
+            <tr>
+                <td colspan="{{ 6 if is_pos else 7 }}">الإجمالي</td>
+                <td>{{ "{:,.2f}".format(total_amount) }}</td>
+            </tr>
+        </tfoot>
+        {% endif %}
+    </table>
+
+    <div class="footer">
+        <p>{{ app_brand_title | default('Silsal POS') }} — تقرير مشتريات</p>
+    </div>
+</div>
+<div class="no-print" style="text-align:center;margin-top:20px;">
+    <button onclick="window.print()" style="padding:10px 24px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-family:Cairo;font-size:14px;font-weight:700;cursor:pointer;">
+        <i>🖨️</i> طباعة التقرير
+    </button>
+    <button onclick="window.close()" style="padding:10px 24px;background:#eee;border:none;border-radius:8px;font-family:Cairo;font-size:14px;cursor:pointer;margin-right:8px;">إغلاق</button>
+</div>
+<script>
+(function () {
+    function fitPosReceiptPage() {
+        if (!document.body || !document.body.classList.contains('pos')) return;
+        var el = document.querySelector('.invoice');
+        if (!el) return;
+        var px = Math.max(el.scrollHeight, el.offsetHeight, el.getBoundingClientRect().height);
+        var mm = Math.ceil((px * 25.4) / 96) + 6;
+        if (mm < 60) mm = 60;
+        if (mm > 3000) mm = 3000;
+        var w = document.body.classList.contains('pos58') ? '58mm' : '80mm';
+        var old = document.getElementById('pos-page-fit');
+        if (old) old.remove();
+        var st = document.createElement('style');
+        st.id = 'pos-page-fit';
+        st.textContent = '@page{size:' + w + ' ' + mm + 'mm;margin:0}';
+        document.head.appendChild(st);
+    }
+    fitPosReceiptPage();
+    window.addEventListener('load', function () {
+        fitPosReceiptPage();
+        setTimeout(fitPosReceiptPage, 200);
+    });
+    window.addEventListener('beforeprint', fitPosReceiptPage);
+
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('autoprint') === '1') {
+        window.addEventListener('load', function () {
+            fitPosReceiptPage();
+            window.print();
+        });
+    }
+})();
+</script>
+</body>
+</html>

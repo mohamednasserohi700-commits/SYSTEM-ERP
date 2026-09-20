@@ -15,7 +15,7 @@
             <td>{{ e.department or '—' }}</td>
             <td>{{ e.branch.name if e.branch else '—' }}</td>
             <td style="font-weight:700;color:var(--success);">{{ "{:,.2f}".format(e.salary) }}</td>
-            <td style="color:var(--text-muted);">{{ e.hire_date.strftime('%Y/%m/%d') if e.hire_date else '—' }}</td>
+            <td style="color:var(--text-muted);">{{ e.hire_date | to_cairo_time('%Y/%m/%d') if e.hire_date else '—' }}</td>
             <td><span class="badge {{ 'badge-success' if e.is_active else 'badge-danger' }}">{{ 'نشط' if e.is_active else 'غير نشط' }}</span></td>
             <td>
                 {% if e.is_active %}

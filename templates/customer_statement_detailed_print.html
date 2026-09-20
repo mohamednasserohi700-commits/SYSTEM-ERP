@@ -95,7 +95,7 @@
             <div class="invoice-label">كشف حساب تفصيلي عميل</div>
             <div class="invoice-num">{{ customer.code or '' }}</div>
             <div class="invoice-date">الفترة: {{ date_from }} — {{ date_to }}</div>
-            <div class="invoice-date">تاريخ الطباعة: {{ printed_at.strftime('%Y/%m/%d %H:%M') }}</div>
+            <div class="invoice-date">تاريخ الطباعة: {{ printed_at | to_cairo_date_time }}</div>
         </div>
     </div>
 
@@ -118,7 +118,7 @@
         <tbody>
         {% for r in rows %}
         <tr>
-            <td>{{ r.date.strftime('%Y/%m/%d') }}</td>
+            <td>{{ r.date | to_cairo_time('%Y/%m/%d') }}</td>
             <td>{{ r.product }}<br><span class="ret-tag">{{ r.invoice_number }}{% if r.type == 'return' %} — مرتجع{% endif %}</span></td>
             <td>{{ "{:,.2f}".format(r.qty) }} {{ r.unit }}</td>
             <td>{{ "{:,.2f}".format(r.price) }}</td>

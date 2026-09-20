@@ -55,7 +55,7 @@
                             {% elif r.plan == 'custom' and r.custom_days %}{{ r.custom_days }} يوم
                             {% else %}—{% endif %}
                         </td>
-                        <td style="font-size:12px;color:var(--text-muted);">{{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '—' }}</td>
+                        <td style="font-size:12px;color:var(--text-muted);">{{ r.created_at | to_cairo_time('%Y-%m-%d') if r.created_at else '—' }}</td>
                         <td style="font-size:12px;">{{ r.note or '—' }}</td>
                     </tr>
                     {% else %}
@@ -77,8 +77,8 @@
                 <tr>
                     <td style="font-family:monospace;">…{{ u.code_hint }}</td>
                     <td>{{ u.plan }}</td>
-                    <td style="font-size:12px;color:var(--text-muted);">{{ u.activated_at.strftime('%Y-%m-%d %H:%M') if u.activated_at else '—' }}</td>
-                    <td>{% if u.expires_at %}{{ u.expires_at.strftime('%Y-%m-%d') }}{% else %}دائم{% endif %}</td>
+                    <td style="font-size:12px;color:var(--text-muted);">{{ u.activated_at | to_cairo_date_time if u.activated_at else '—' }}</td>
+                    <td>{% if u.expires_at %}{{ u.expires_at | to_cairo_time('%Y-%m-%d') }}{% else %}دائم{% endif %}</td>
                 </tr>
                 {% else %}
                 <tr><td colspan="4"><div class="empty-state" style="padding:20px;">لا توجد تفعيلات بعد</div></td></tr>

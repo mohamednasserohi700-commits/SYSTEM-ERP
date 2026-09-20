@@ -78,7 +78,7 @@
             <tbody>
                 {% for e in expenses | sort(attribute='date', reverse=True) %}
                 <tr>
-                    <td>{{ e.date.strftime('%Y/%m/%d') }}</td>
+                    <td>{{ e.date | to_cairo_time('%Y/%m/%d') }}</td>
                     <td><span class="badge badge-warning">{{ e.category }}</span></td>
                     <td style="color:var(--text-muted);">{{ e.description or '—' }}</td>
                     <td>{{ e.branch.name if e.branch else '—' }}</td>

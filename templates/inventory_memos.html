@@ -34,7 +34,7 @@
                 {% endif %}
             </td>
             <td>{{ m.user.full_name if m.user else '—' }}</td>
-            <td>{{ m.date.strftime('%Y/%m/%d %H:%M') }}</td>
+            <td>{{ m.date | to_cairo_date_time }}</td>
             <td style="white-space:nowrap;">
                 <a href="{{ url_for('inventory_memo_detail', id=m.id) }}" class="btn btn-sm btn-outline">عرض</a>
                 <a href="{{ url_for('inventory_memo_print', id=m.id) }}" target="_blank" class="btn btn-sm btn-outline">طباعة</a>

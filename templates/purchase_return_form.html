@@ -24,7 +24,7 @@
             <select name="purchase_id" class="form-control" required id="purchaseSelect" onchange="loadPurchaseItems()">
                 <option value="">اختر الفاتورة...</option>
                 {% for p in purchases %}
-                <option value="{{ p.id }}">{{ p.invoice_number }} — {{ p.supplier.name if p.supplier else '—' }} — {{ p.date.strftime('%Y/%m/%d') }}</option>
+                <option value="{{ p.id }}">{{ p.invoice_number }} — {{ p.supplier.name if p.supplier else '—' }} — {{ p.date | to_cairo_time('%Y/%m/%d') }}</option>
                 {% endfor %}
             </select>
         </div>

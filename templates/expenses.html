@@ -30,7 +30,7 @@
         <tbody>
             {% for e in expenses %}
             <tr>
-                <td style="color:var(--text-muted);">{{ e.date.strftime('%Y/%m/%d') }}</td>
+                <td style="color:var(--text-muted);">{{ e.date | to_cairo_time('%Y/%m/%d') }}</td>
                 <td><span class="badge badge-warning">{{ e.category }}</span></td>
                 <td>{{ e.description or '—' }}</td>
                 <td>{{ e.branch.name if e.branch else '—' }}</td>

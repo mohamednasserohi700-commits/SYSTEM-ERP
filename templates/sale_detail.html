@@ -23,7 +23,7 @@
         <div style="text-align: left;">
             <div style="font-size: 22px; font-weight: 800;">فاتورة مبيعات</div>
             <div style="color: var(--accent); font-weight: 700; font-size: 18px;">{{ sale.invoice_number }}</div>
-            <div style="color: var(--text-muted);">{{ sale.date.strftime('%Y/%m/%d %H:%M') }}</div>
+            <div style="color: var(--text-muted);">{{ sale.date | to_cairo_date_time }}</div>
         </div>
     </div>
 
@@ -126,7 +126,7 @@
             <tbody>
             {% for log in edit_logs %}
                 <tr>
-                    <td style="white-space:nowrap;">{{ log.date.strftime('%Y/%m/%d %H:%M') }}</td>
+                    <td style="white-space:nowrap;">{{ log.date | to_cairo_date_time }}</td>
                     <td style="white-space:nowrap;">{{ log.user.username if log.user else '-' }}</td>
                     <td>{{ log.summary }}</td>
                 </tr>

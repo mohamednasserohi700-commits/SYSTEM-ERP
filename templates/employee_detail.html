@@ -55,7 +55,7 @@
                     {% if emp.hire_date %}
                     <div style="display:flex;align-items:center;gap:10px;font-size:13px;">
                         <i class="fas fa-calendar" style="color:var(--text-muted);width:16px;"></i>
-                        <span>{{ emp.hire_date.strftime('%Y/%m/%d') }}</span>
+                        <span>{{ emp.hire_date | to_cairo_time('%Y/%m/%d') }}</span>
                     </div>
                     {% endif %}
                 </div>
@@ -99,7 +99,7 @@
                         ('الوظيفة', emp.position or '—'), ('القسم', emp.department or '—'),
                         ('الهاتف', emp.phone or '—'), ('البريد الإلكتروني', emp.email or '—'),
                         ('الفرع', emp.branch.name if emp.branch else '—'),
-                        ('تاريخ التعيين', emp.hire_date.strftime('%Y/%m/%d') if emp.hire_date else '—'),
+                        ('تاريخ التعيين', emp.hire_date | to_cairo_time('%Y/%m/%d') if emp.hire_date else '—'),
                     ] %}
                     <div style="padding:12px;background:rgba(255,255,255,.03);border-radius:8px;border:1px solid var(--border);">
                         <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">{{ label }}</div>

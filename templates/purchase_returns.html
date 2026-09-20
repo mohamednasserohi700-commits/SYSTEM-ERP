@@ -13,7 +13,7 @@
             <td style="color:var(--info);">{{ r.purchase.invoice_number if r.purchase else '—' }}</td>
             <td style="font-weight:700;">{{ "{:,.2f}".format(r.total) }}</td>
             <td style="color:var(--text-muted);">{{ r.reason or '—' }}</td>
-            <td>{{ r.date.strftime('%Y/%m/%d') }}</td>
+            <td>{{ r.date | to_cairo_time('%Y/%m/%d') }}</td>
             <td style="white-space:nowrap;"><a href="{{ url_for('purchase_return_detail', id=r.id) }}" class="btn btn-sm btn-outline">عرض</a>
             <a href="{{ url_for('purchase_return_print', id=r.id) }}" target="_blank" class="btn btn-sm btn-outline">طباعة</a>
             {% if can('returns_delete') %}

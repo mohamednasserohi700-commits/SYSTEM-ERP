@@ -61,7 +61,7 @@
         <button onclick="window.print()">طباعة</button>
     </div>
     <h1>مرتجع مبيعات — {{ ret.invoice_number }}</h1>
-    <p>فاتورة أصلية: {{ ret.sale.invoice_number if ret.sale else '—' }} — {{ ret.date.strftime('%Y/%m/%d') }}</p>
+    <p>فاتورة أصلية: {{ ret.sale.invoice_number if ret.sale else '—' }} — {{ ret.date | to_cairo_time('%Y/%m/%d') }}</p>
     <table>
         <thead><tr><th>صنف</th><th>كمية مرتجعة</th><th>سعر</th><th>خصم %</th><th>خصم إضافي %</th><th>إجمالي</th></tr></thead>
         <tbody>

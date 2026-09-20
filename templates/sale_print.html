@@ -99,7 +99,7 @@
         <div style="text-align:left;">
             <div class="invoice-label">فاتورة مبيعات</div>
             <div class="invoice-num">{{ sale.invoice_number }}</div>
-            <div class="invoice-date">{{ sale.date.strftime('%Y/%m/%d %H:%M') }}</div>
+            <div class="invoice-date">{{ sale.date | to_cairo_date_time }}</div>
         </div>
     </div>
 
@@ -153,7 +153,7 @@
 
     <div class="footer">
         <p>شكراً لتعاملكم معنا — {{ app_brand_title | default('Silsal POS') }}</p>
-        <p style="margin-top:4px;">طُبع في: {{ sale.date.strftime('%Y/%m/%d') }}</p>
+        <p style="margin-top:4px;">طُبع في: {{ sale.date | to_cairo_time('%Y/%m/%d') }}</p>
     </div>
 </div>
 <div class="no-print" style="text-align:center;margin-top:20px;">

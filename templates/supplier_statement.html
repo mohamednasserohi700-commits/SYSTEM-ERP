@@ -16,7 +16,7 @@
 <thead><tr><th>الفاتورة</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th></tr></thead>
 <tbody>{% for p in purchases %}<tr>
 <td><a href="{{ url_for('purchase_detail',id=p.id) }}" style="color:var(--info);text-decoration:none;">{{ p.invoice_number }}</a></td>
-<td>{{ p.date.strftime('%Y/%m/%d') }}</td>
+<td>{{ p.date | to_cairo_time('%Y/%m/%d') }}</td>
 <td>{{ "{:,.2f}".format(p.total) }}</td>
 <td style="color:var(--success);">{{ "{:,.2f}".format(p.paid) }}</td>
 <td style="color:{{ 'var(--success)' if p.remaining == 0 else 'var(--warning)' }};">
@@ -36,7 +36,7 @@
 <tbody>
 {% for pay in payments %}
 <tr>
-  <td style="color:var(--text-muted);">{{ pay.date.strftime('%Y/%m/%d') }}</td>
+  <td style="color:var(--text-muted);">{{ pay.date | to_cairo_time('%Y/%m/%d') }}</td>
   <td>
     {% if pay.amount < 0 %}
       <span class="badge badge-warning">مدين (عليه)</span>

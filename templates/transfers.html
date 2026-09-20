@@ -36,7 +36,7 @@
                     <td>{{ t.from_warehouse.name }}</td>
                     <td>{{ t.to_warehouse.name }}</td>
                     <td>{{ t.requester.full_name if t.requester else '—' }}</td>
-                    <td>{{ t.date_requested.strftime('%Y/%m/%d %H:%M') }}</td>
+                    <td>{{ t.date_requested | to_cairo_time('%Y/%m/%d %H:%M') }}</td>
                     <td>
                         {% if t.status == 'pending' %}
                         <span class="badge badge-warning pulse"><i class="fas fa-clock"></i> معلق</span>

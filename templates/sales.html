@@ -4,6 +4,8 @@
 {% block page_title %}سجل المبيعات{% endblock %}
 {% block breadcrumb %}قائمة فواتير المبيعات{% endblock %}
 {% block topbar_actions %}
+<button type="button" onclick="printSalesToday()" class="btn btn-outline"><i class="fas fa-print"></i> طباعة مبيعات اليوم</button>
+<button type="button" onclick="openSalesRangeModal()" class="btn btn-outline"><i class="fas fa-calendar-alt"></i> طباعة حسب الفترة</button>
 <a href="{{ url_for('new_sale') }}" class="btn btn-primary"><i class="fas fa-plus"></i> فاتورة جديدة</a>
 {% endblock %}
 {% block content %}
@@ -30,7 +32,7 @@
                             {{ "{:,.2f}".format(sale.remaining) }}
                         {% endif %}
                     </td>
-                    <td style="color:var(--text-muted);">{{ sale.date.strftime('%Y/%m/%d') }}</td>
+                    <td style="color:var(--text-muted);">{{ sale.date | to_cairo_time('%Y/%m/%d') }}</td>
                     <td style="white-space:nowrap;">
                         <a href="{{ url_for('sale_detail', id=sale.id) }}" class="btn btn-outline btn-xs"><i class="fas fa-eye"></i></a>
                         {% if can('sales_purchases_delete') %}
@@ -55,4 +57,60 @@
     {% endfor %}
     {% if sales.has_next %}<a href="{{ url_for('sales', page=sales.next_num) }}" class="page-link">التالي</a>{% endif %}
 </div>
+
+<!-- Sales Print by Date Range Modal -->
+<div class="modal-overlay" id="salesRangeModal">
+    <div class="modal">
+        <div class="modal-title"><i class="fas fa-print"></i> طباعة مبيعات حسب الفترة</div>
+        <div class="form-group">
+            <label class="form-label">من تاريخ</label>
+            <input type="date" id="salesRangeFrom" class="form-control">
+        </div>
+        <div class="form-group">
+            <label class="form-label">إلى تاريخ</label>
+            <input type="date" id="salesRangeTo" class="form-control">
+        </div>
+        <div class="modal-actions">
+            <button type="button" onclick="closeSalesRangeModal()" class="btn btn-outline">إلغاء</button>
+            <button type="button" onclick="submitSalesRangePrint()" class="btn btn-primary"><i class="fas fa-print"></i> طباعة</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function todayISO() {
+    var d = new Date();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + m + '-' + day;
+}
+function printSalesToday() {
+    var t = todayISO();
+    window.open('{{ url_for("sales_print_range") }}?date_from=' + t + '&date_to=' + t, '_blank');
+}
+function openSalesRangeModal() {
+    var t = todayISO();
+    document.getElementById('salesRangeFrom').value = t;
+    document.getElementById('salesRangeTo').value = t;
+    document.getElementById('salesRangeModal').classList.add('open');
+}
+function closeSalesRangeModal() {
+    document.getElementById('salesRangeModal').classList.remove('open');
+}
+function submitSalesRangePrint() {
+    var from = document.getElementById('salesRangeFrom').value;
+    var to = document.getElementById('salesRangeTo').value;
+    if (!from || !to) {
+        alert('يرجى تحديد تاريخ البداية والنهاية');
+        return;
+    }
+    window.open('{{ url_for("sales_print_range") }}?date_from=' + from + '&date_to=' + to, '_blank');
+    closeSalesRangeModal();
+}
+document.getElementById('salesRangeModal').addEventListener('click', function (e) {
+    if (e.target === this) closeSalesRangeModal();
+});
+</script>
 {% endblock %}

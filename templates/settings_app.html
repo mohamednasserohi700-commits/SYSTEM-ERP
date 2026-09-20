@@ -61,6 +61,21 @@
             </div>
 
             <hr style="border:0;border-top:1px solid var(--border);margin:16px 0 14px;">
+            <div style="font-weight:800;font-size:14px;margin-bottom:10px;"><i class="fas fa-clock" style="color:var(--accent);margin-left:6px;"></i> إعدادات التوقيت</div>
+
+            <div class="form-group">
+                <label class="form-label">المنطقة الزمنية</label>
+                <select name="timezone_offset" class="form-control">
+                    <option value="2" {{ 'selected' if settings.get('timezone_offset','2') == '2' }}>UTC+2 — التوقيت الشتوي (أكتوبر — مايو)</option>
+                    <option value="3" {{ 'selected' if settings.get('timezone_offset','2') == '3' }}>UTC+3 — التوقيت الصيفي (مايو — أكتوبر)</option>
+                </select>
+                <small style="color:var(--text-muted);font-size:11px;display:block;margin-top:6px;">
+                    <strong>الشتوي:</strong> من 1 أكتوبر إلى 30 أبريل — <strong>الصيفي:</strong> من 1 مايو إلى 30 سبتمبر<br>
+                    اختر الخيار الصحيح حسب موسم السنة الحالية. التوقيت سيظهر صحيح في جميع صفحات النظام.
+                </small>
+            </div>
+
+            <hr style="border:0;border-top:1px solid var(--border);margin:16px 0 14px;">
             <div style="font-weight:800;font-size:14px;margin-bottom:10px;"><i class="fas fa-print" style="color:var(--accent);margin-left:6px;"></i> إعدادات الطباعة</div>
 
             <div class="form-grid-2">

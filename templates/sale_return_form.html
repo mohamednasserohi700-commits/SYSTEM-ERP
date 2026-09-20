@@ -24,7 +24,7 @@
             <select name="sale_id" class="form-control" required id="saleSelect" onchange="loadSaleItems()">
                 <option value="">اختر الفاتورة...</option>
                 {% for s in sales %}
-                <option value="{{ s.id }}">{{ s.invoice_number }} — {{ s.customer.name if s.customer else 'نقدي' }} — {{ s.date.strftime('%Y/%m/%d') }}</option>
+                <option value="{{ s.id }}">{{ s.invoice_number }} — {{ s.customer.name if s.customer else 'نقدي' }} — {{ s.date | to_cairo_time('%Y/%m/%d') }}</option>
                 {% endfor %}
             </select>
         </div>

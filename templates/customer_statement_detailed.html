@@ -47,7 +47,7 @@
 <tbody>
 {% for r in rows %}
 <tr>
-  <td style="color:var(--text-muted);white-space:nowrap;">{{ r.date.strftime('%Y/%m/%d') }}</td>
+  <td style="color:var(--text-muted);white-space:nowrap;">{{ r.date | to_cairo_time('%Y/%m/%d') }}</td>
   <td>
     <a href="{{ url_for('sale_detail', id=r.sale_id) }}" style="color:var(--accent);text-decoration:none;">{{ r.invoice_number }}</a>
   </td>

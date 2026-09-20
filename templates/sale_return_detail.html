@@ -17,7 +17,7 @@
     <div class="form-grid-3">
         <div><span class="form-label">الفاتورة الأصلية</span><div style="font-weight:700;color:var(--accent);">{{ ret.sale.invoice_number if ret.sale else '—' }}</div></div>
         <div><span class="form-label">العميل</span><div>{{ ret.sale.customer.name if ret.sale and ret.sale.customer else 'نقدي' }}</div></div>
-        <div><span class="form-label">تاريخ المرتجع</span><div>{{ ret.date.strftime('%Y/%m/%d %H:%M') }}</div></div>
+        <div><span class="form-label">تاريخ المرتجع</span><div>{{ ret.date | to_cairo_date_time }}</div></div>
     </div>
     {% if ret.reason %}<p style="margin-top:12px;color:var(--text-muted);font-size:13px;"><strong>السبب:</strong> {{ ret.reason }}</p>{% endif %}
 </div></div>

@@ -21,7 +21,7 @@
         {% if memo.memo_type == 'issue_production' %}<strong>صرف مواد خام</strong>{% else %}<strong>استلام تام</strong>{% endif %}
         — المخزن: {{ memo.warehouse.name if memo.warehouse else '—' }}
         — مرجع الإنتاج: {{ memo.production_ref or '—' }}
-        — {{ memo.date.strftime('%Y/%m/%d %H:%M') }}
+        — {{ memo.date | to_cairo_date_time }}
     </div>
     <table>
         <thead><tr><th>#</th><th>صنف</th><th>كمية</th><th>وحدة</th></tr></thead>

@@ -2,7 +2,7 @@
 {% set block_icon = 'fas fa-chart-pie' %}
 {% block title %}لوحة التحكم{% endblock %}
 {% block page_title %}لوحة التحكم{% endblock %}
-{% block breadcrumb %}نظرة عامة — {{ now.strftime('%Y/%m/%d') if now else '' }}{% endblock %}
+{% block breadcrumb %}نظرة عامة — {{ now | to_cairo_time('%Y/%m/%d') if now else '' }}{% endblock %}
 
 {% block extra_styles %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -138,7 +138,7 @@
                         <td style="color:var(--accent);font-weight:700;">{{ sale.invoice_number }}</td>
                         <td>{{ sale.customer.name if sale.customer else 'نقدي' }}</td>
                         <td style="font-weight:700;">{{ "{:,.2f}".format(sale.total) }}</td>
-                        <td style="color:var(--text-muted);font-size:12px;">{{ sale.date.strftime('%m/%d %H:%M') }}</td>
+                        <td style="color:var(--text-muted);font-size:12px;">{{ sale.date | to_cairo_time('%m/%d %H:%M') }}</td>
                     </tr>
                     {% else %}
                     <tr><td colspan="4"><div class="empty-state" style="padding:24px;"><i class="fas fa-receipt"></i><h3>لا توجد مبيعات بعد</h3></div></td></tr>
