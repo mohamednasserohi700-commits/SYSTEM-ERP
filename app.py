@@ -4,7 +4,7 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from functools import wraps
 import os
 import json
@@ -120,6 +120,50 @@ def _set_sqlite_pragma(dbapi_connection, connection_record):
         cursor.close()
 
 login_manager = LoginManager(app)
+
+# ── Timezone helper functions ─────────────────────────────────
+# دالة لتحويل الوقت من UTC إلى توقيت مصر
+# توقيت مصر = UTC+2 (الشتاء) أو UTC+3 (الصيف)
+def get_cairo_now(timezone_offset=None):
+    """الحصول على الوقت الحالي بتوقيت مصر (UTC+2/+3)
+
+    Args:
+        timezone_offset: عدد ساعات الإزاحة (2 أو 3)
+                        إذا لم تُمرر، تُقرأ من الإعدادات
+    """
+    if timezone_offset is None:
+        # قراءة الإعداد من قاعدة البيانات
+        try:
+            gs = get_app_settings_dict()
+            timezone_offset = int(gs.get('timezone_offset', '2'))
+        except:
+            timezone_offset = 2  # القيمة الافتراضية
+
+    # تحويل إلى UTC+2 أو UTC+3 حسب الإعداد
+    cairo_offset = timezone(timedelta(hours=timezone_offset))
+    utc_now = datetime.now(timezone.utc)
+    cairo_now = utc_now.astimezone(cairo_offset)
+    return cairo_now
+
+def convert_utc_to_cairo(utc_dt, timezone_offset=None):
+    """تحويل datetime من UTC إلى توقيت مصر"""
+    if utc_dt is None:
+        return None
+
+    if timezone_offset is None:
+        # قراءة الإعداد من قاعدة البيانات
+        try:
+            gs = get_app_settings_dict()
+            timezone_offset = int(gs.get('timezone_offset', '2'))
+        except:
+            timezone_offset = 2  # القيمة الافتراضية
+
+    # تحويل إلى توقيت مصر (UTC+2 أو UTC+3)
+    cairo_offset = timezone(timedelta(hours=timezone_offset))
+    if utc_dt.tzinfo is None:
+        # إذا لم يكن هناك timezone information، افترض أنه UTC
+        utc_dt = utc_dt.replace(tzinfo=timezone.utc)
+    return utc_dt.astimezone(cairo_offset)
 
 # ── Error logging (يظهر الخطأ كاملاً في السجلات) ──────────
 import logging, traceback as _tb
@@ -605,6 +649,7 @@ EXTRA_APP_SETTINGS_DEFAULTS = {
     'print_auto_sale_return': '0',
     'print_auto_purchase_return': '0',
     'print_auto_copies': '1',
+    'timezone_offset': '2',  # التوقيت الافتراضي: الشتوي (UTC+2)
 }
 
 GLOBAL_ONLY_SETTING_KEYS = frozenset({
@@ -1690,6 +1735,40 @@ def inject_globals():
     )
 
 
+# ── Custom Jinja2 Filter لتحويل الأوقات ────────────────────────────────
+@app.template_filter('to_cairo_time')
+def filter_to_cairo_time(dt, fmt='%Y-%m-%d %H:%M:%S'):
+    """تحويل datetime من UTC إلى توقيت مصر وتنسيقه
+
+    الاستخدام في القالب:
+        {{ invoice.date | to_cairo_time }}
+        {{ invoice.date | to_cairo_time('%d/%m/%Y %H:%M') }}
+    """
+    if dt is None:
+        return ''
+    try:
+        cairo_dt = convert_utc_to_cairo(dt)
+        return cairo_dt.strftime(fmt)
+    except Exception:
+        return str(dt)
+
+
+@app.template_filter('to_cairo_date_time')
+def filter_to_cairo_date_time(dt):
+    """تحويل مختصر: التاريخ والوقت باللغة العربية
+
+    الاستخدام: {{ invoice.date | to_cairo_date_time }}
+    النتيجة: 20/09/2024 15:30:45
+    """
+    if dt is None:
+        return ''
+    try:
+        cairo_dt = convert_utc_to_cairo(dt)
+        return cairo_dt.strftime('%d/%m/%Y %H:%M:%S')
+    except Exception:
+        return str(dt)
+
+
 @app.before_request
 def erp_sqlite_autobackup_start():
     if getattr(erp_sqlite_autobackup_start, '_started', False):
@@ -1910,7 +1989,11 @@ def license_admin_end_subscription():
 @login_required
 def about():
     gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
-    return render_template('about.html', settings=gs)
+    # الحصول على الوقت الحالي بتوقيت مصر
+    current_time_cairo = get_cairo_now()
+    formatted_time = current_time_cairo.strftime('%Y-%m-%d %H:%M:%S')
+    timezone_name = 'التوقيت المحلي (مصر)'
+    return render_template('about.html', settings=gs, current_time=formatted_time, timezone_name=timezone_name)
 
 # ===== DASHBOARD =====
 @app.route('/')
@@ -2876,6 +2959,44 @@ def sales():
     return render_template('sales.html', sales=sales, returned_sale_ids=returned_ids,
                            fully_settled_sale_ids=fully_settled_sale_ids)
 
+
+@app.route('/sales/print')
+@login_required
+def sales_print_range():
+    today_str = date.today().isoformat()
+    date_from = (request.args.get('date_from') or today_str).strip() or today_str
+    date_to = (request.args.get('date_to') or today_str).strip() or today_str
+    # في حال إدخال المستخدم للتاريخين بترتيب معكوس، نصححه تلقائياً بدل رفض الطلب
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+    sales_list = Sale.query.options(
+        joinedload(Sale.items), joinedload(Sale.customer),
+        joinedload(Sale.warehouse), joinedload(Sale.user)
+    ).filter(
+        db.func.date(Sale.date).between(date_from, date_to)
+    ).order_by(Sale.date.asc()).all()
+
+    total_subtotal = sum((s.subtotal or 0) for s in sales_list)
+    total_discount = sum((s.discount or 0) for s in sales_list)
+    total_tax = sum((s.tax or 0) for s in sales_list)
+    total_amount = sum((s.total or 0) for s in sales_list)
+    total_paid = sum((s.paid or 0) for s in sales_list)
+    total_remaining = sum((s.remaining or 0) for s in sales_list)
+
+    gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
+    return render_template(
+        'sales_print_range.html',
+        sales_list=sales_list, date_from=date_from, date_to=date_to,
+        is_single_day=(date_from == date_to),
+        total_subtotal=total_subtotal, total_discount=total_discount, total_tax=total_tax,
+        total_amount=total_amount, total_paid=total_paid, total_remaining=total_remaining,
+        generated_at=datetime.utcnow(),  # UTC؛ الفلتر to_cairo_date_time يحوّله حسب إعداد التوقيت في صفحة حول
+        print_mode=(gs.get('print_mode') or 'normal'),
+        print_paper_size=(gs.get('print_paper_size') or 'A4'),
+        auto_print_requested=(request.args.get('autoprint') == '1'),
+    )
+
+
 @app.route('/sales/new', methods=['GET', 'POST'])
 @login_required
 def new_sale():
@@ -3499,6 +3620,43 @@ def purchases():
                 fully_settled_purchase_ids.add(p.id)
     return render_template('purchases.html', purchases=purchases, returned_purchase_ids=returned_purchase_ids,
                            fully_settled_purchase_ids=fully_settled_purchase_ids)
+
+@app.route('/purchases/print')
+@login_required
+def purchases_print_range():
+    today_str = date.today().isoformat()
+    date_from = (request.args.get('date_from') or today_str).strip() or today_str
+    date_to = (request.args.get('date_to') or today_str).strip() or today_str
+    # في حال إدخال المستخدم للتاريخين بترتيب معكوس، نصححه تلقائياً بدل رفض الطلب
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+    purchases_list = Purchase.query.options(
+        joinedload(Purchase.items), joinedload(Purchase.supplier),
+        joinedload(Purchase.warehouse), joinedload(Purchase.user)
+    ).filter(
+        db.func.date(Purchase.date).between(date_from, date_to)
+    ).order_by(Purchase.date.asc()).all()
+
+    total_subtotal = sum((p.subtotal or 0) for p in purchases_list)
+    total_discount = sum((p.discount or 0) for p in purchases_list)
+    total_tax = sum((p.tax or 0) for p in purchases_list)
+    total_wht = sum((getattr(p, 'withholding_tax', 0) or 0) for p in purchases_list)
+    total_amount = sum((p.total or 0) for p in purchases_list)
+    total_paid = sum((p.paid or 0) for p in purchases_list)
+    total_remaining = sum((p.remaining or 0) for p in purchases_list)
+
+    gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
+    return render_template(
+        'purchases_print_range.html',
+        purchases_list=purchases_list, date_from=date_from, date_to=date_to,
+        is_single_day=(date_from == date_to),
+        total_subtotal=total_subtotal, total_discount=total_discount, total_tax=total_tax, total_wht=total_wht,
+        total_amount=total_amount, total_paid=total_paid, total_remaining=total_remaining,
+        generated_at=datetime.utcnow(),  # UTC؛ الفلتر to_cairo_date_time يحوّله حسب إعداد التوقيت في صفحة حول
+        print_mode=(gs.get('print_mode') or 'normal'),
+        print_paper_size=(gs.get('print_paper_size') or 'A4'),
+        auto_print_requested=(request.args.get('autoprint') == '1'),
+    )
 
 @app.route('/purchases/new', methods=['GET', 'POST'])
 @login_required
@@ -4687,7 +4845,7 @@ def app_settings():
                 row = AppSetting(key=storage_key)
                 db.session.add(row)
             row.value = val.strip()
-        for key in ('print_mode', 'print_paper_size', 'print_auto_copies', 'print_auto_sale', 'print_auto_purchase', 'print_auto_sale_return', 'print_auto_purchase_return'):
+        for key in ('print_mode', 'print_paper_size', 'print_auto_copies', 'print_auto_sale', 'print_auto_purchase', 'print_auto_sale_return', 'print_auto_purchase_return', 'timezone_offset'):
             if key in checkbox_keys:
                 val = '1' if request.form.get(key) in ('1', 'on', 'true', 'yes') else '0'
             else:
