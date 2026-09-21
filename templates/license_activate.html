@@ -10,6 +10,12 @@
         <div class="card-title"><i class="fas fa-shield-alt"></i> تفعيل النظام</div>
     </div>
     <div class="card-body">
+        {% if device_mismatch %}
+        <div class="alert alert-danger" style="margin-bottom:16px;font-size:13px;line-height:1.7;">
+            <strong>هذا الترخيص مفعّل على جهاز آخر.</strong><br>
+            النسخة اتنقلت أو اتنسخت لجهاز جديد. لتشغيل النظام على هذا الجهاز أدخل سريالاً جديداً.
+        </div>
+        {% endif %}
         {% if license_expiry_message_text %}
         <div class="alert alert-warning" style="margin-bottom:16px;font-size:13px;line-height:1.6;white-space:pre-wrap;">{{ license_expiry_message_text }}</div>
         {% endif %}
@@ -23,6 +29,11 @@
             </div>
             <button type="submit" class="btn btn-primary" style="width:100%;"><i class="fas fa-check"></i> تفعيل</button>
         </form>
+        {% if device_code %}
+        <p style="font-size:11px;color:var(--text-muted);margin-top:14px;text-align:center;">
+            رمز هذا الجهاز: <span style="font-family:monospace;letter-spacing:0.05em;">{{ device_code }}</span>
+        </p>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

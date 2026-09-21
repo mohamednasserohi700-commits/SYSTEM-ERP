@@ -89,6 +89,48 @@
 </div>
 
 <div class="card" style="margin-top:20px;">
+    <div class="card-header"><div class="card-title"><i class="fas fa-certificate"></i> الاشتراك الحالي لهذا التثبيت</div></div>
+    <div class="card-body">
+        <p style="font-size:14px;margin-bottom:12px;">
+            الحالة:
+            {% if lic_active %}<span class="badge badge-success">{{ lic_line }}</span>{% else %}<span class="badge badge-danger">{{ lic_line }}</span>{% endif %}
+        </p>
+        <p style="font-size:12px;color:var(--text-muted);line-height:1.6;margin-bottom:12px;">
+            إنهاء الاشتراك يوقف الترخيص فوراً، وأي مستخدم غير المطوّر سيُطلب منه سريال جديد عند أول طلب. السريال القديم لا يمكن استخدامه مرة أخرى.
+        </p>
+        <form method="POST" action="{{ url_for('license_admin_end_subscription') }}" onsubmit="return confirm('هل أنت متأكد من إنهاء الاشتراك الحالي؟ سيتوقف النظام عن العمل لكل المستخدمين حتى إدخال سريال جديد.');">
+            <button type="submit" class="btn btn-danger" {% if not lic_active %}disabled title="لا يوجد اشتراك فعّال"{% endif %}><i class="fas fa-ban"></i> إنهاء الاشتراك</button>
+        </form>
+    </div>
+</div>
+
+<div class="card" style="margin-top:20px;">
+    <div class="card-header"><div class="card-title"><i class="fas fa-laptop"></i> ربط الترخيص بالجهاز</div></div>
+    <div class="card-body">
+        {% if binding_enabled %}
+        <p style="font-size:12px;color:var(--text-muted);line-height:1.6;margin-bottom:12px;">
+            الربط مفعّل: أي نسخة من قاعدة البيانات تُنقل لجهاز آخر تطلب سريالاً جديداً.
+            استخدم الزر أدناه فقط عند نقل النظام عمداً لجهاز جديد أو بعد تغيير هاردوير أو إعادة تثبيت ويندوز على نفس العميل.
+        </p>
+        <table style="max-width:520px;">
+            <tbody>
+                <tr><td>رمز هذا الجهاز</td><td style="font-family:monospace;">{{ device_code }}</td></tr>
+                <tr><td>رمز الجهاز المربوط بالترخيص</td><td style="font-family:monospace;">{{ bound_code or '— (غير مربوط بعد)' }}</td></tr>
+                <tr><td>الحالة</td><td>{% if device_match %}<span class="badge badge-success">مطابق</span>{% elif bound_code %}<span class="badge badge-danger">مربوط بجهاز آخر</span>{% else %}<span class="badge badge-info">غير مربوط</span>{% endif %}</td></tr>
+            </tbody>
+        </table>
+        <form method="POST" action="{{ url_for('license_admin_rebind_device') }}" style="margin-top:14px;" onsubmit="return confirm('ربط الترخيص بهذا الجهاز؟ الجهاز القديم سيتوقف عن العمل بهذا الترخيص.');">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-link"></i> ربط الترخيص بهذا الجهاز</button>
+        </form>
+        {% else %}
+        <p style="font-size:12px;color:var(--text-muted);line-height:1.6;margin:0;">
+            ربط الجهاز غير مفعّل في هذا التشغيل (يتعطل تلقائياً مع PostgreSQL أو عند ضبط <code>LICENSE_DEVICE_BIND=0</code>).
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card" style="margin-top:20px;">
     <div class="card-header"><div class="card-title"><i class="fas fa-comment-alt"></i> رسالة للعميل عند انتهاء الاشتراك</div></div>
     <div class="card-body">
         <p style="font-size:12px;color:var(--text-muted);line-height:1.55;margin-bottom:12px;">
