@@ -11,6 +11,8 @@ import json
 from collections import defaultdict
 import re
 import hashlib
+import hmac
+import sys
 import secrets
 import shutil
 import threading
@@ -59,7 +61,10 @@ db_url = os.environ.get('DATABASE_URL')
 if not db_url:
     db_url = _sqlite_uri_from_json_config()
 if not db_url:
-    db_url = 'sqlite:///erp.db'
+    # مسار مطلق وثابت جوه instance/ — عشان القاعدة الفعلية والنسخ الاحتياطي والتصدير والاستيراد
+    # كلهم يشاوروا على نفس الملف (المسار النسبي 'sqlite:///erp.db' كان بيفتح instance/erp.db
+    # بينما النسخ الاحتياطي كان بيقرأ erp.db اللي في جذر المشروع)
+    db_url = 'sqlite:///' + os.path.join(_INSTANCE_DIR, 'erp.db').replace('\\', '/')
 # Heroku/Railway يُرجعون postgres:// — نحوّله لـ postgresql://
 if db_url.startswith('postgres://'):
     db_url = db_url.replace('postgres://', 'postgresql://', 1)
@@ -110,13 +115,23 @@ db = SQLAlchemy(app)
 from sqlalchemy.engine import Engine as _SAEngine
 
 
+# وضع الـ journal لقواعد SQLite:
+#   DELETE (الافتراضي) = كل البيانات بتتكتب مباشرة في ملف erp.db نفسه (بدون ملفات -wal / -shm)
+#   WAL = الكتابة أولاً في erp.db-wal ثم تُدمج في erp.db لاحقاً (لازم النسخ يشمل ملف -wal)
+# للرجوع لـ WAL: اضبط متغير البيئة SQLITE_JOURNAL_MODE=WAL
+SQLITE_JOURNAL_MODE = (os.environ.get('SQLITE_JOURNAL_MODE') or 'DELETE').strip().upper()
+if SQLITE_JOURNAL_MODE not in ('DELETE', 'WAL'):
+    SQLITE_JOURNAL_MODE = 'DELETE'
+
+
 @event.listens_for(_SAEngine, 'connect')
 def _set_sqlite_pragma(dbapi_connection, connection_record):
     if 'sqlite3' in type(dbapi_connection).__module__:
         cursor = dbapi_connection.cursor()
-        cursor.execute('PRAGMA journal_mode=WAL')
+        cursor.execute('PRAGMA journal_mode=' + SQLITE_JOURNAL_MODE)
         cursor.execute('PRAGMA busy_timeout=15000')  # 15 ثانية انتظار قبل الفشل
-        cursor.execute('PRAGMA synchronous=NORMAL')  # أداء أفضل مع WAL، بدون تضحية بأمان البيانات
+        # NORMAL آمن مع WAL فقط؛ في الوضع العادي (DELETE) نستخدم FULL عشان قطع الكهرباء المفاجئ ما يتلفش الملف
+        cursor.execute('PRAGMA synchronous=' + ('NORMAL' if SQLITE_JOURNAL_MODE == 'WAL' else 'FULL'))
         cursor.close()
 
 login_manager = LoginManager(app)
@@ -654,6 +669,7 @@ EXTRA_APP_SETTINGS_DEFAULTS = {
 
 GLOBAL_ONLY_SETTING_KEYS = frozenset({
     'installation_license_permanent', 'installation_license_expires', 'license_expiry_message',
+    'installation_license_device',
 })
 
 BRANCH_SCOPED_SETTING_KEYS = frozenset(DEFAULT_SETTINGS.keys()) | frozenset(EXTRA_APP_SETTINGS_DEFAULTS.keys()) - GLOBAL_ONLY_SETTING_KEYS
@@ -1213,7 +1229,18 @@ def erp_backup(tag='manual'):
         if not src or not os.path.isfile(src):
             return None, f'ملف SQLite غير موجود — تحقق من مسار قاعدة البيانات في الإعدادات (المسار الحالي: {uri})'
         dest = os.path.join(dest_dir, f'erp_{tag}_{ts}.db')
-        shutil.copy2(src, dest)
+        try:
+            # sqlite backup API: نسخة كاملة ومتسقة حتى لو فيه بيانات لسه في erp.db-wal
+            import sqlite3 as _sqlite3
+            _src_conn = _sqlite3.connect(src, timeout=15)
+            _dst_conn = _sqlite3.connect(dest)
+            try:
+                _src_conn.backup(_dst_conn)
+            finally:
+                _dst_conn.close()
+                _src_conn.close()
+        except Exception:
+            shutil.copy2(src, dest)
         _prune_old_backups(25)
         return dest, None
 
@@ -1507,8 +1534,88 @@ def _parse_license_expiry(val):
         return None
 
 
-def installation_license_valid():
-    gs = get_app_settings_dict(branch_id=None)
+# ── ربط الترخيص بالجهاز ──────────────────────────────────────────
+# عند التفعيل بيتسجّل "رمز الجهاز" مع الترخيص. لو حد نسخ erp.db لجهاز تاني،
+# الترخيص هناك بيبان غير صالح ويُطلب سريال جديد (السريال القديم مستخدم ومش هيتقبل تاني).
+# بيتعطل تلقائياً مع PostgreSQL (السيرفرات السحابية بتغيّر بصمة الجهاز مع كل نشر)،
+# أو بضبط متغير البيئة LICENSE_DEVICE_BIND=0  (وللتفعيل الإجباري LICENSE_DEVICE_BIND=1).
+_DEVICE_FP_CACHE = {}
+
+
+def _device_binding_enabled():
+    flag = (os.environ.get('LICENSE_DEVICE_BIND') or '').strip().lower()
+    if flag in ('0', 'false', 'no', 'off'):
+        return False
+    if flag in ('1', 'true', 'yes', 'on'):
+        return True
+    return bool(_is_sqlite)
+
+
+def _raw_machine_id():
+    """معرّف ثابت للجهاز من نظام التشغيل (بدون أي صلاحيات خاصة). None لو تعذّر."""
+    # Windows: MachineGuid
+    if os.name == 'nt':
+        try:
+            import winreg
+            access = winreg.KEY_READ | getattr(winreg, 'KEY_WOW64_64KEY', 0)
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\Microsoft\Cryptography', 0, access) as k:
+                v = str(winreg.QueryValueEx(k, 'MachineGuid')[0]).strip().lower()
+                if v:
+                    return 'win:' + v
+        except Exception:
+            pass
+    # Linux
+    for p in ('/etc/machine-id', '/var/lib/dbus/machine-id'):
+        try:
+            with open(p, 'r') as f:
+                v = f.read().strip()
+            if v:
+                return 'lx:' + v
+        except Exception:
+            pass
+    # macOS
+    if sys.platform == 'darwin':
+        try:
+            import subprocess
+            out = subprocess.check_output(['ioreg', '-rd1', '-c', 'IOPlatformExpertDevice'], timeout=5).decode('utf-8', 'ignore')
+            m = re.search(r'"IOPlatformUUID"\s*=\s*"([^"]+)"', out)
+            if m:
+                return 'mac:' + m.group(1).lower()
+        except Exception:
+            pass
+    # احتياطي: عنوان MAC (لو Python رجّع رقم عشوائي بدل MAC حقيقي مش هنعتمد عليه)
+    try:
+        import uuid
+        node = uuid.getnode()
+        if not (node >> 40) & 1:
+            return 'nic:' + format(node, '012x')
+    except Exception:
+        pass
+    return None
+
+
+def current_device_fingerprint():
+    if 'fp' not in _DEVICE_FP_CACHE:
+        raw = _raw_machine_id()
+        _DEVICE_FP_CACHE['fp'] = hashlib.sha256(('pos-erp-device-v1|' + raw).encode('utf-8')).hexdigest() if raw else ''
+    return _DEVICE_FP_CACHE['fp']
+
+
+def device_display_code(fp=None):
+    fp = (fp if fp is not None else current_device_fingerprint()) or ''
+    s16 = fp[:16].upper()
+    return '-'.join(s16[i:i + 4] for i in range(0, len(s16), 4)) if s16 else '—'
+
+
+def _set_global_setting(key, value):
+    row = AppSetting.query.filter_by(key=key).first()
+    if not row:
+        row = AppSetting(key=key)
+        db.session.add(row)
+    row.value = value if value is not None else ''
+
+
+def _license_time_valid(gs):
     if gs.get('installation_license_permanent') == '1':
         return True
     dt = _parse_license_expiry(gs.get('installation_license_expires'))
@@ -1517,18 +1624,52 @@ def installation_license_valid():
     return datetime.utcnow() < dt
 
 
+def _license_device_mismatch_gs(gs):
+    """True لو الترخيص سليم زمنياً لكنه مربوط بجهاز غير هذا الجهاز."""
+    if not _device_binding_enabled():
+        return False
+    cur = current_device_fingerprint()
+    stored = (gs.get('installation_license_device') or '').strip()
+    if not cur or not stored:
+        return False
+    return _license_time_valid(gs) and not hmac.compare_digest(stored, cur)
+
+
+def license_device_mismatch():
+    return _license_device_mismatch_gs(get_app_settings_dict(branch_id=None))
+
+
+def installation_license_valid():
+    gs = get_app_settings_dict(branch_id=None)
+    if not _license_time_valid(gs):
+        return False
+    if not _device_binding_enabled():
+        return True
+    cur = current_device_fingerprint()
+    if not cur:
+        return True  # تعذّرت قراءة بصمة الجهاز: ما نقفلش على العميل
+    stored = (gs.get('installation_license_device') or '').strip()
+    if not stored:
+        # ترخيص مفعّل قبل تشغيل ميزة الربط: يتربط بأول جهاز يشغّل النسخة المحدّثة
+        try:
+            _set_global_setting('installation_license_device', cur)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return True
+    return hmac.compare_digest(stored, cur)
+
+
 def set_installation_license(permanent, expires_at):
-    def _set(k, v):
-        row = AppSetting.query.filter_by(key=k).first()
-        if not row:
-            row = AppSetting(key=k)
-            db.session.add(row)
-        row.value = v if v is not None else ''
-    _set('installation_license_permanent', '1' if permanent else '0')
+    _set_global_setting('installation_license_permanent', '1' if permanent else '0')
     if permanent:
-        _set('installation_license_expires', '')
+        _set_global_setting('installation_license_expires', '')
     else:
-        _set('installation_license_expires', expires_at.strftime('%Y-%m-%d %H:%M:%S') if expires_at else '')
+        _set_global_setting('installation_license_expires', expires_at.strftime('%Y-%m-%d %H:%M:%S') if expires_at else '')
+    if _device_binding_enabled():
+        fp = current_device_fingerprint()
+        if fp:
+            _set_global_setting('installation_license_device', fp)
 
 
 def subscription_status_for_ui():
@@ -1538,6 +1679,8 @@ def subscription_status_for_ui():
     lic_msg = (gs.get('license_expiry_message') or DEFAULT_SETTINGS.get('license_expiry_message', '') or '').strip()
     if getattr(current_user, 'role', None) == 'developer':
         return {'kind': 'developer', 'line': 'مفعّل — مطوّر', 'client_message': lic_msg}
+    if _license_device_mismatch_gs(gs):
+        return {'kind': 'none', 'line': 'الترخيص مرتبط بجهاز آخر', 'client_message': lic_msg}
     if gs.get('installation_license_permanent') == '1':
         return {'kind': 'permanent', 'line': 'ترخيص دائم', 'client_message': lic_msg}
     dt = _parse_license_expiry(gs.get('installation_license_expires'))
@@ -1871,6 +2014,13 @@ def logout():
     return redirect(url_for('login'))
 
 
+def _license_activate_ctx():
+    return {
+        'device_mismatch': license_device_mismatch(),
+        'device_code': device_display_code() if _device_binding_enabled() else '',
+    }
+
+
 @app.route('/license/activate', methods=['GET', 'POST'])
 @login_required
 def license_activate():
@@ -1883,15 +2033,15 @@ def license_activate():
         norm = normalize_license_serial(raw)
         if len(norm) < 6:
             flash('أدخل سريالاً صالحاً', 'error')
-            return render_template('license_activate.html')
+            return render_template('license_activate.html', **_license_activate_ctx())
         h = license_serial_hash(norm)
         if LicenseUsedSerial.query.filter_by(code_hash=h).first():
             flash('تم استخدام هذا السريال مسبقاً على هذا النظام أو جهاز آخر', 'error')
-            return render_template('license_activate.html')
+            return render_template('license_activate.html', **_license_activate_ctx())
         pool = LicensePoolSerial.query.filter_by(code_norm=norm).first()
         if not pool:
             flash('السريال غير صالح أو غير موجود في قائمة الترخيص', 'error')
-            return render_template('license_activate.html')
+            return render_template('license_activate.html', **_license_activate_ctx())
         plan = pool.plan or 'one_year'
         custom_days = pool.custom_days
         exp, perm = expires_for_serial_plan(plan, custom_days)
@@ -1906,7 +2056,7 @@ def license_activate():
         db.session.commit()
         flash('تم تفعيل الترخيص بنجاح', 'success')
         return redirect(safe_home_url_for(current_user))
-    return render_template('license_activate.html')
+    return render_template('license_activate.html', **_license_activate_ctx())
 
 
 @app.route('/license/admin')
@@ -1915,7 +2065,40 @@ def license_activate():
 def license_admin():
     pool = LicensePoolSerial.query.order_by(LicensePoolSerial.created_at.desc()).all()
     used = LicenseUsedSerial.query.order_by(LicenseUsedSerial.activated_at.desc()).all()
-    return render_template('license_admin.html', pool=pool, used=used)
+    gs = get_app_settings_dict(branch_id=None)
+    stored_fp = (gs.get('installation_license_device') or '').strip()
+    if gs.get('installation_license_permanent') == '1':
+        lic_line, lic_active = 'ترخيص دائم', True
+    else:
+        _dt = _parse_license_expiry(gs.get('installation_license_expires'))
+        if not _dt:
+            lic_line, lic_active = 'غير مفعّل', False
+        elif _dt > datetime.utcnow():
+            lic_line, lic_active = 'ينتهي في ' + _dt.strftime('%Y-%m-%d') + ' (متبقي ' + str((_dt - datetime.utcnow()).days) + ' يوم)', True
+        else:
+            lic_line, lic_active = 'انتهى في ' + _dt.strftime('%Y-%m-%d'), False
+    return render_template(
+        'license_admin.html', pool=pool, used=used, lic_line=lic_line, lic_active=lic_active,
+        binding_enabled=_device_binding_enabled(),
+        device_code=device_display_code(),
+        bound_code=device_display_code(stored_fp) if stored_fp else '',
+        device_match=bool(stored_fp) and stored_fp == current_device_fingerprint(),
+    )
+
+
+@app.route('/license/admin/rebind-device', methods=['POST'])
+@login_required
+@developer_required
+def license_admin_rebind_device():
+    # للمطوّر فقط: نقل مشروع لجهاز جديد أو بعد تغيير هاردوير/إعادة تثبيت ويندوز
+    fp = current_device_fingerprint()
+    if not _device_binding_enabled() or not fp:
+        flash('ربط الجهاز غير مفعّل أو تعذّرت قراءة بصمة هذا الجهاز', 'error')
+        return redirect(url_for('license_admin'))
+    _set_global_setting('installation_license_device', fp)
+    db.session.commit()
+    flash('تم ربط الترخيص بهذا الجهاز', 'success')
+    return redirect(url_for('license_admin'))
 
 
 @app.route('/license/admin/generate', methods=['POST'])
@@ -1970,16 +2153,14 @@ def license_admin_save_message():
 @login_required
 @developer_required
 def license_admin_end_subscription():
-    # مسح السريال المفعل من قاعدة البيانات — يُطلب سريال جديد عند الدخول
-    row = AppSetting.query.filter_by(key='license_serial').first()
-    if row:
-        db.session.delete(row)
-    row2 = AppSetting.query.filter_by(key='license_activated_at').first()
-    if row2:
-        db.session.delete(row2)
-    row3 = AppSetting.query.filter_by(key='license_expires_at').first()
-    if row3:
-        db.session.delete(row3)
+    # إنهاء الاشتراك الحالي: الترخيص يبقى غير مفعّل ويُطلب سريال جديد من المستخدمين (حساب المطوّر مش بيتأثر)
+    _set_global_setting('installation_license_permanent', '0')
+    _set_global_setting('installation_license_expires', '')
+    _set_global_setting('installation_license_device', '')
+    for legacy_key in ('license_serial', 'license_activated_at', 'license_expires_at'):
+        legacy = AppSetting.query.filter_by(key=legacy_key).first()
+        if legacy:
+            db.session.delete(legacy)
     db.session.commit()
     flash('تم إنهاء الاشتراك الحالي — سيُطلب سريال جديد عند الدخول', 'success')
     return redirect(url_for('license_admin'))
@@ -4955,9 +5136,9 @@ def database_export():
     if not p or not os.path.isfile(p):
         flash('التصدير متاح فقط عند استخدام ملف SQLite', 'error')
         return redirect(url_for('database_admin'))
-    sqlite_backup_to_folder('before_export')
+    _bk = sqlite_backup_to_folder('before_export')
     return send_file(
-        p,
+        _bk if (_bk and os.path.isfile(_bk)) else p,
         as_attachment=True,
         download_name=f'erp_backup_{datetime.now().strftime("%Y%m%d_%H%M")}.db',
         mimetype='application/octet-stream',
@@ -5055,6 +5236,13 @@ def database_import():
         f.save(tmp)
         db.session.remove()
         db.engine.dispose()
+        for _ext in ('-wal', '-shm'):
+            _leftover = dest_main + _ext
+            if os.path.isfile(_leftover):
+                try:
+                    os.remove(_leftover)
+                except OSError:
+                    pass
         shutil.copy2(tmp, dest_main)
         flash('تم استبدال ملف قاعدة البيانات. يُنصح بإعادة تشغيل التطبيق ثم تحديث الصفحة.', 'success')
     except Exception as e:
