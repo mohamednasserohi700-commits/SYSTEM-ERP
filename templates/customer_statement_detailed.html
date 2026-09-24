@@ -36,35 +36,54 @@
     </div>
     <div class="stat-card">
         <div class="stat-icon green"><i class="fas fa-coins"></i></div>
-        <div><div class="stat-value">{{ "{:,.2f}".format(grand_total) }}</div><div class="stat-label">صافي القيمة</div></div>
+        <div><div class="stat-value">{{ "{:,.2f}".format(grand_total) }}</div><div class="stat-label">صافي قيمة الأصناف</div></div>
     </div>
+    <div class="stat-card">
+        <div class="stat-icon {{ 'red' if actual_balance_impact >= 0 else 'blue' }}"><i class="fas fa-balance-scale"></i></div>
+        <div><div class="stat-value">{{ "{:,.2f}".format(actual_balance_impact) }}</div><div class="stat-label">الرصيد الفعلي لهذه الفترة (يطابق كشف الحساب المالي)</div></div>
+    </div>
+</div>
+<div style="margin:-12px 0 20px;font-size:12px;color:var(--text-muted);">
+  <i class="fas fa-info-circle"></i> «صافي قيمة الأصناف» = قيمة بضاعة الفترة فقط. «الرصيد الفعلي» = نفس رقم رصيد كشف الحساب المالي لو اخترت فترة تغطي كل الحركات — ويشمل المدفوع/المتبقي على كل فاتورة + الحركات اليدوية غير المرتبطة بفاتورة (تظهر أدناه).
 </div>
 
 <div class="card" style="margin-bottom:16px;">
 <div class="card-header"><div class="card-title"><i class="fas fa-list-ol"></i> تفاصيل الحركة (صنف بصنف)</div></div>
 <div class="table-container"><table>
-<thead><tr><th>التاريخ</th><th>الفاتورة</th><th>النوع</th><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+<thead><tr><th>التاريخ</th><th>الفاتورة</th><th>النوع</th><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th><th>المدفوع (الفاتورة)</th><th>المتبقي (الفاتورة)</th></tr></thead>
 <tbody>
 {% for r in rows %}
-<tr>
+<tr{% if r.type == 'entry' %} style="background:var(--bg-soft, rgba(127,127,127,0.06));"{% endif %}>
   <td style="color:var(--text-muted);white-space:nowrap;">{{ r.date | to_cairo_time('%Y/%m/%d') }}</td>
   <td>
-    <a href="{{ url_for('sale_detail', id=r.sale_id) }}" style="color:var(--accent);text-decoration:none;">{{ r.invoice_number }}</a>
+    {% if r.type == 'entry' %}
+      <span style="color:var(--text-muted);">—</span>
+    {% else %}
+      <a href="{{ url_for('sale_detail', id=r.sale_id) }}" style="color:var(--accent);text-decoration:none;">{{ r.invoice_number }}</a>
+    {% endif %}
   </td>
   <td>
     {% if r.type == 'sale' %}
       <span class="badge badge-info">بيع</span>
-    {% else %}
+    {% elif r.type == 'return' %}
       <span class="badge badge-warning">مرتجع</span>
+    {% else %}
+      <span class="badge badge-success">{{ r.type_label }}</span>
     {% endif %}
   </td>
-  <td style="font-weight:600;">{{ r.product }}</td>
-  <td>{{ "{:,.2f}".format(r.qty) }} {{ r.unit }}</td>
-  <td>{{ "{:,.2f}".format(r.price) }}</td>
+  <td style="font-weight:600;">{% if r.type == 'entry' %}<span style="color:var(--text-muted);">— حركة مالية يدوية —</span>{% else %}{{ r.product }}{% endif %}</td>
+  <td>{% if r.qty is not none %}{{ "{:,.2f}".format(r.qty) }} {{ r.unit }}{% else %}—{% endif %}</td>
+  <td>{% if r.price is not none %}{{ "{:,.2f}".format(r.price) }}{% else %}—{% endif %}</td>
   <td style="font-weight:700;color:{{ 'var(--danger)' if r.total >= 0 else 'var(--success)' }};">{{ "{:,.2f}".format(r.total) }}</td>
+  <td style="color:var(--success);">{% if r.invoice_paid is not none %}{{ "{:,.2f}".format(r.invoice_paid) }}{% else %}—{% endif %}</td>
+  <td style="color:{{ 'var(--success)' if (r.invoice_remaining or 0) == 0 else 'var(--danger)' }};">
+    {% if r.invoice_remaining is not none %}
+      {% if r.invoice_remaining <= 0.001 %}<span style="font-weight:700;">تم السداد</span>{% else %}{{ "{:,.2f}".format(r.invoice_remaining) }}{% endif %}
+    {% else %}—{% endif %}
+  </td>
 </tr>
 {% else %}
-<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">لا توجد حركة أصناف في هذه الفترة</td></tr>
+<tr><td colspan="9" style="text-align:center;color:var(--text-muted);">لا توجد حركة في هذه الفترة</td></tr>
 {% endfor %}
 </tbody>
 </table></div></div>

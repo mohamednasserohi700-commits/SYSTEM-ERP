@@ -91,8 +91,14 @@
     /* ===== شبكة الملصقات (A4 / ورقة عادية) ===== */
     .label-grid {
         display: grid;
-        grid-template-columns: repeat({{ preset.cols }}, {{ preset.w_mm }}mm);
-        gap: 1.5mm;
+        /* في وضع اللفافة الحرارية (roll) يجب أن يكون العمود واحدًا دائمًا،
+           بصرف النظر عن قيمة preset.cols (التي تخص عرض ورقة A4 فقط) */
+        grid-template-columns: repeat({% if is_sheet %}{{ preset.cols }}{% else %}1{% endif %}, {{ preset.w_mm }}mm);
+        /* في وضع اللفافة الحرارية: أي فجوة بين الصفوف تُضاف فوق ارتفاع الصفحة (@page) المحدد بدقة،
+           فتتراكم مع كل ملصق وتُسبب انزياح الباركود تدريجيًا حتى يقع على خط القطع بين ملصقين.
+           لذلك يجب أن تكون الفجوة صفرًا في وضع اللفافة، والفاصل الحقيقي بين الملصقات
+           يتم فقط عبر page-break-after. */
+        gap: {% if is_sheet %}1.5mm{% else %}0{% endif %};
         justify-content: start;
     }
 
@@ -100,15 +106,20 @@
     .label {
         width: {{ preset.w_mm }}mm;
         height: {{ preset.h_mm }}mm;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
+        /* ملحوظة مهمة: display:flex كان يمنع عمل page-break-inside:avoid بشكل صحيح
+           في محرك طباعة Chromium (قيد معروف: الخاصية دي غير موثوقة على flex/grid
+           containers) — فكان أي محتوى أطول قليلاً من ارتفاع الملصق بيتقسّم فعليًا
+           على الملصق التالي بدل ما يُقصّ. لذلك استُبدل flex بتخطيط block عادي
+           مع محاذاة نصية/margin تلقائي، عشان break-inside:avoid يشتغل فعليًا. */
+        display: block;
         overflow: hidden;
         text-align: center;
         padding: 0.5mm 0.8mm;
         background: #fff;
         position: relative;
+        /* يمنع تقسيم محتوى الملصق الواحد (اسم + باركود + رقم) على صفحتين/ملصقين متتاليين */
+        page-break-inside: avoid;
+        break-inside: avoid;
     }
 
     /* حدود في وضع الورقة */
@@ -145,22 +156,30 @@
     }
     .label svg.bc {
         width: 96%;
-        flex-shrink: 0;
         display: block;
+        margin: 0 auto;
     }
     .label .lbl-barcode-num {
         font-size: {{ bnum_font }}px;
         font-family: 'Courier New', monospace;
+        font-weight: 700;
         letter-spacing: 0.3px;
-        color: #111;
-        margin-top: -0.5mm;
+        color: #000;
+        margin-top: 0.8mm;
         direction: ltr;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .label .lbl-code {
         font-size: {{ code_font }}px;
-        color: #555;
+        font-weight: 700;
+        color: #000;
         font-family: 'Courier New', monospace;
         direction: ltr;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .label .lbl-price {
         font-size: {{ price_font }}px;
@@ -168,6 +187,9 @@
         color: #000;
         margin-top: 0.3mm;
         direction: ltr;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .label .lbl-price .currency {
         font-size: {{ currency_font }}px;
@@ -209,6 +231,11 @@
             size: {{ preset.w_mm }}mm {{ preset.h_mm }}mm;
             margin: 0;
         }
+        /* إخفاء الخط المتقطع الفاصل (وهو للعرض على الشاشة فقط) حتى لا يُطبع كخط زائد
+           يُربك محاذاة رأس الطباعة الحراري مع حافة الملصق الفعلية */
+        .roll-mode .label {
+            border-bottom: none !important;
+        }
         {% endif %}
     }
 </style>
@@ -241,7 +268,7 @@
             <svg class="bc" data-code="{{ l.barcode }}" data-fmt="{{ l.fmt }}"></svg>
             <div class="lbl-barcode-num">{{ l.barcode }}</div>
 
-            {% if show_code and l.code %}
+            {% if show_code and l.code and l.code != l.barcode %}
             <div class="lbl-code">{{ l.code }}</div>
             {% endif %}
 
@@ -293,13 +320,15 @@
         // حجز مساحة للنصوص (اسم + رقم + كود + سعر)
         var textReserve = 0;
         {% if show_name %}    textReserve += {{ name_font }} + 1.5; {% endif %}
-        textReserve += {{ bnum_font }} + 1;
+        textReserve += {{ bnum_font }} + 4;
         {% if show_code %}    textReserve += {{ code_font }} + 0.5; {% endif %}
         {% if show_price %}   textReserve += {{ price_font }} + 1; {% endif %}
 
-        // المساحة المتبقية للباركود (بالبيكسل)
-        var available = totalH - textReserve - (0.5 * PX_PER_MM * 2);
-        return Math.max(15, Math.min(available, 55));
+        // المساحة المتبقية للباركود (بالبيكسل) — بهامش أمان 15% إضافي
+        // حتى لا يقترب الارتفاع الفعلي للمحتوى من حافة الملصق، ويُترك
+        // مجال كافٍ لاسم الصنف والرقم حتى لا يلتصقا بالباركود
+        var available = (totalH - textReserve - (0.5 * PX_PER_MM * 2)) * 0.85;
+        return Math.max(12, Math.min(available, 42));
     }
 
     function calcBarWidth(svgEl) {

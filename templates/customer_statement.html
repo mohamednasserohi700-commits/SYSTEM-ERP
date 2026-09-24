@@ -32,7 +32,7 @@
 <div class="card" style="margin-bottom:16px;">
 <div class="card-header"><div class="card-title"><i class="fas fa-hand-holding-usd"></i> سجل الحركات</div></div>
 <div class="table-container"><table>
-<thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>ملاحظات</th>{% if can('statement_payment_delete') %}<th></th>{% endif %}</tr></thead>
+<thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>ملاحظات</th><th>ربط بفاتورة</th>{% if can('statement_payment_delete') %}<th></th>{% endif %}</tr></thead>
 <tbody>
 {% for pay in payments %}
 <tr>
@@ -40,14 +40,33 @@
   <td>
     {% if pay.amount < 0 %}
       <span class="badge badge-warning">مدين (عليه)</span>
-    {% elif pay.notes and 'رصيد دائن' in (pay.notes or '') %}
-      <span class="badge badge-info">دائن (له)</span>
+    {% elif pay.notes and 'تحصيل من العميل' in pay.notes %}
+      <span class="badge badge-info">تحصيل</span>
     {% else %}
       <span class="badge badge-success">دفعة</span>
     {% endif %}
   </td>
   <td style="color:{{ 'var(--warning)' if pay.amount < 0 else 'var(--success)' }};font-weight:700;">{{ "{:,.2f}".format(pay.amount) }}</td>
   <td>{{ pay.notes or '—' }}</td>
+  <td style="white-space:nowrap;">
+    {% if pay.linked_invoice %}
+      <span class="badge badge-info" title="هذه الحركة مرتبطة بفاتورة فعلية"><i class="fas fa-link"></i> فاتورة {{ pay.linked_invoice }}</span>
+      <form method="POST" action="{{ url_for('unlink_customer_payment', id=customer.id, pay_id=pay.id) }}" style="display:inline;" onsubmit="return confirm('فك ربط هذه الحركة بالفاتورة؟ (لن يتغيّر الرصيد، وستعود الفاتورة مفتوحة)');">
+        <button type="submit" class="btn btn-outline btn-xs" title="فك الربط"><i class="fas fa-unlink"></i></button>
+      </form>
+    {% elif pay.linkable and open_invoices %}
+      <form method="POST" action="{{ url_for('link_customer_payment', id=customer.id, pay_id=pay.id) }}" class="link-invoice-form" style="display:inline;">
+        <select name="invoice_number" class="form-control link-invoice-select" data-amount="{{ pay.amount }}" title="اربط هذه الحركة بفاتورة آجلة" style="width:auto;min-width:170px;padding:4px 8px;font-size:12px;height:auto;display:inline-block;">
+          <option value="">ربط بفاتورة ▾</option>
+          {% for inv in open_invoices %}
+          <option value="{{ inv.invoice_number }}" data-remaining="{{ inv.actual_remaining }}">فاتورة {{ inv.invoice_number }} — متبقي {{ "{:,.2f}".format(inv.actual_remaining) }}</option>
+          {% endfor %}
+        </select>
+      </form>
+    {% else %}
+      <span style="color:var(--text-muted);">—</span>
+    {% endif %}
+  </td>
   {% if can('statement_payment_delete') %}
   <td style="white-space:nowrap;">
     <form method="POST" action="{{ url_for('delete_customer_payment', id=customer.id, pay_id=pay.id) }}" style="display:inline;" onsubmit="return confirm('حذف هذه الحركة وإلغاء أثرها على الرصيد؟');">
@@ -57,7 +76,7 @@
   {% endif %}
 </tr>
 {% else %}
-<tr><td colspan="{{ 5 if can('statement_payment_delete') else 4 }}" style="text-align:center;color:var(--text-muted);">لا توجد حركات مسجلة</td></tr>
+<tr><td colspan="{{ 6 if can('statement_payment_delete') else 5 }}" style="text-align:center;color:var(--text-muted);">لا توجد حركات مسجلة</td></tr>
 {% endfor %}
 </tbody>
 </table></div></div>
@@ -70,29 +89,135 @@
 <div style="font-size:28px;font-weight:800;color:{% if customer.balance > 0 %}var(--danger){% elif customer.balance < 0 %}var(--success){% else %}var(--text-muted){% endif %};">{{ "{:,.2f}".format(customer.balance) }}</div>
 <div style="font-size:12px;margin-top:6px;color:var(--text-muted);">
   {% if customer.balance > 0 %}عليه — مدين لنا
-  {% elif customer.balance < 0 %}له — رصيد دائن
+  {% elif customer.balance < 0 %}له — تحصيل من العميل
   {% else %}مسوّى{% endif %}
 </div>
 </div></div>
 <div class="card">
 <div class="card-header"><div class="card-title"><i class="fas fa-money-bill"></i> تسجيل حركة</div></div>
 <div class="card-body">
-<form method="POST" action="{{ url_for('customer_payment',id=customer.id) }}">
+<form method="POST" action="{{ url_for('customer_payment',id=customer.id) }}" id="customerPaymentForm">
 <div class="form-group">
   <label class="form-label">نوع الحركة</label>
-  <select name="entry_type" class="form-control">
-    <option value="payment">دفعة من العميل (يسدد لنا)</option>
-    <option value="debit">إضافة على الحساب (العميل عليه)</option>
-    <option value="credit">رصيد دائن (العميل له)</option>
+  <select name="entry_type" id="entryTypeSelect" class="form-control">
+    <option value="payment">تحصيل من العميل (العميل عليه فلوس وهتحصلها منه)</option>
+    <option value="debit">دفعة للعميل (العميل له فلوس وهتدفعها له)</option>
+    <option value="invoice" hidden>تسديد فاتورة محددة</option>
   </select>
 </div>
 <div class="form-group">
   <label class="form-label">المبلغ</label>
-  <input type="number" name="amount" class="form-control" step="0.01" required>
-  <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">يمكن إدخال مبلغ سالب مثل <b>-1000</b> بمعنى العميل مدين لنا، ثم تسويته لاحقاً بدفعة.</div>
+  <input type="number" name="amount" id="txnAmount" class="form-control" step="0.01" min="0.01" required>
 </div>
+<div class="form-group" id="invoiceMatchWrap" style="display:none;">
+  <label class="form-label" style="display:flex;align-items:center;gap:6px;">
+    <i class="fas fa-link" style="color:var(--accent);"></i> فواتير آجلة مطابقة للمبلغ
+  </label>
+  <div id="invoiceMatchList" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:160px;overflow-y:auto;"></div>
+  <small style="color:var(--text-muted);font-size:11px;display:block;margin-top:6px;">
+    اختر فاتورة لو الحركة دي تسديد لها — هتترتبط الحركة بالفاتورة ويتحدّث متبقيها. اضغط عليها تاني لإلغاء الربط وتسجيل الحركة عادي بدون ربط.
+  </small>
+</div>
+<input type="hidden" name="invoice_number" id="selectedInvoiceNumber" value="">
 <div class="form-group"><label class="form-label">ملاحظات</label><input type="text" name="notes" class="form-control"></div>
 <button type="submit" class="btn btn-success" style="width:100%;"><i class="fas fa-check"></i> تسجيل الحركة</button>
 </form></div></div>
 </div></div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    var openInvoices = {{ open_invoices | tojson }};
+    var amountInput = document.getElementById('txnAmount');
+    var entryTypeSelect = document.getElementById('entryTypeSelect');
+    var invoiceNumberInput = document.getElementById('selectedInvoiceNumber');
+    var wrap = document.getElementById('invoiceMatchWrap');
+    var list = document.getElementById('invoiceMatchList');
+
+    function fmt(n) {
+        n = parseFloat(n) || 0;
+        return n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    function clearSelection() {
+        invoiceNumberInput.value = '';
+        if (entryTypeSelect.value === 'invoice') entryTypeSelect.value = 'payment';
+    }
+
+    function render() {
+        var amt = parseFloat(amountInput.value);
+        // الربط بفاتورة منطقي فقط عند "تحصيل من العميل" — دفعة له لا تُربط بفاتورة بيع
+        if (entryTypeSelect.value === 'debit' || !amt || amt <= 0) {
+            wrap.style.display = 'none';
+            list.innerHTML = '';
+            clearSelection();
+            return;
+        }
+        var matches = openInvoices.filter(function (inv) {
+            return inv.actual_remaining <= amt + 0.0001;
+        });
+        if (invoiceNumberInput.value && !matches.some(function (m) { return m.invoice_number === invoiceNumberInput.value; })) {
+            clearSelection();
+        }
+        if (matches.length === 0) {
+            wrap.style.display = 'none';
+            list.innerHTML = '';
+            clearSelection();
+            return;
+        }
+        wrap.style.display = 'block';
+        list.innerHTML = '';
+        matches.forEach(function (inv) {
+            var row = document.createElement('div');
+            var selected = (invoiceNumberInput.value === inv.invoice_number);
+            row.style.cssText = 'padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:12.5px;' +
+                (selected ? 'background:var(--accent);color:#fff;font-weight:700;' : 'background:transparent;');
+            row.innerHTML = '<span>' + (selected ? '✓ ' : '') + 'فاتورة ' + inv.invoice_number + '</span>' +
+                '<span>متبقي ' + fmt(inv.actual_remaining) + '</span>';
+            row.addEventListener('click', function () {
+                if (invoiceNumberInput.value === inv.invoice_number) {
+                    clearSelection();
+                } else {
+                    invoiceNumberInput.value = inv.invoice_number;
+                    entryTypeSelect.value = 'invoice';
+                }
+                render();
+            });
+            list.appendChild(row);
+        });
+        var last = list.lastElementChild;
+        if (last) last.style.borderBottom = 'none';
+    }
+
+    amountInput.addEventListener('input', render);
+    entryTypeSelect.addEventListener('change', render);
+})();
+</script>
+<script>
+(function () {
+    function fmt(n) {
+        n = parseFloat(n) || 0;
+        return n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+    document.querySelectorAll('.link-invoice-select').forEach(function (sel) {
+        sel.addEventListener('change', function () {
+            if (!sel.value) return;
+            var opt = sel.options[sel.selectedIndex];
+            var amt = parseFloat(sel.getAttribute('data-amount')) || 0;
+            var rem = parseFloat(opt.getAttribute('data-remaining')) || 0;
+            var msg = 'ربط هذه الحركة (' + fmt(amt) + ') بالفاتورة ' + sel.value + '؟\nلن يتغيّر رصيد الحساب.';
+            if (amt > rem + 0.0001) {
+                msg += '\n\nمبلغ الحركة أكبر من متبقي الفاتورة (' + fmt(rem) + ') — سيُربط ' + fmt(rem) +
+                       ' فقط وتبقى الزيادة (' + fmt(amt - rem) + ') حركة عامة غير مرتبطة.';
+            }
+            if (confirm(msg)) {
+                sel.form.submit();
+            } else {
+                sel.value = '';
+            }
+        });
+    });
+})();
+</script>
 {% endblock %}

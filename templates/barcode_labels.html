@@ -80,9 +80,9 @@
         padding: 2px 3px;
     }
     #previewWrap .pv-name  { font-weight: 800; line-height: 1.2; max-width: 95%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #000; }
-    #previewWrap .pv-bnum  { font-family: 'Courier New', monospace; letter-spacing: .4px; color: #000; margin-top: -2px; direction: ltr; }
-    #previewWrap .pv-code  { color: #555; font-family: 'Courier New', monospace; direction: ltr; }
-    #previewWrap .pv-price { font-weight: 900; color: #000; margin-top: 1px; }
+    #previewWrap .pv-bnum  { font-family: 'Courier New', monospace; font-weight: 700; letter-spacing: .4px; color: #000; direction: ltr; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #previewWrap .pv-code  { font-weight: 700; color: #000; font-family: 'Courier New', monospace; direction: ltr; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #previewWrap .pv-price { font-weight: 900; color: #000; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #previewWrap svg { width: 88%; display: block; }
 
     /* ===== اختيار الصيغة ===== */
@@ -240,7 +240,7 @@
                     <label class="form-label">💰 العملة</label>
                     <input type="text" id="currencySymbol" class="form-control"
                            value="{{ default_currency }}" maxlength="10"
-                           placeholder="ريال، $، €، ...">
+                           placeholder="جنية، $، €، ...">
                 </div>
 
                 <!-- الحقول المعروضة -->
@@ -509,11 +509,11 @@
 
         // بناء HTML داخل الملصق
         var html = '';
-        if (showName) html += '<div class="pv-name"  style="font-size:' + (8.5 * fMul).toFixed(1) + 'px;">' + esc(item.name) + '</div>';
+        if (showName) html += '<div class="pv-name"  style="font-size:' + (12.0 * fMul).toFixed(1) + 'px;">' + esc(item.name) + '</div>';
         html += '<svg class="pv-barcode"></svg>';
-        html += '<div class="pv-bnum" style="font-size:' + (6.5 * fMul).toFixed(1) + 'px;">' + esc(item.barcode || item.code || '') + '</div>';
-        if (showCode && item.code)
-            html += '<div class="pv-code" style="font-size:' + (6.5 * fMul).toFixed(1) + 'px;">' + esc(item.code) + '</div>';
+        html += '<div class="pv-bnum" style="font-size:' + (9.5 * fMul).toFixed(1) + 'px;font-weight:700;margin-top:' + (0.8 * fMul).toFixed(1) + 'px;">' + esc(item.barcode || item.code || '') + '</div>';
+        if (showCode && item.code && item.code !== (item.barcode || item.code))
+            html += '<div class="pv-code" style="font-size:' + (11.0 * fMul).toFixed(1) + 'px;font-weight:700;">' + esc(item.code) + '</div>';
         if (showPrice)
             html += '<div class="pv-price" style="font-size:' + (9.5 * fMul).toFixed(1) + 'px;">' +
                     Number(item.price || 0).toFixed(2) +
@@ -529,9 +529,9 @@
         // حساب ارتفاع الباركود
         var totalPxH  = preset.h_mm * scale;
         var textH     = 0;
-        if (showName)  textH += 8.5 * fMul + 2;
-        textH += 6.5 * fMul + 2; // رقم الباركود دائماً
-        if (showCode)  textH += 6.5 * fMul + 1;
+        if (showName)  textH += 12.0 * fMul + 2;
+        textH += 9.5 * fMul + 4; // رقم الباركود دائماً (+ هامش تباعد أكبر تحته)
+        if (showCode)  textH += 11.0 * fMul + 1;
         if (showPrice) textH += 9.5 * fMul + 1;
         var bcH = Math.max(14, totalPxH - textH - 4);
 
@@ -678,6 +678,57 @@
             .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
             .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
+
+    /* =========================================================
+     * حفظ/استرجاع كل إعدادات الطباعة (المقاس، الصيغة، العملة،
+     * الحقول المعروضة) — بحيث تفضل محفوظة في متصفح هذا الجهاز
+     * لكل المرات القادمة، لحد ما المستخدم يغيّرها بنفسه.
+     * ========================================================= */
+    var SETTINGS_KEY = 'silsal_barcode_print_settings_v1';
+
+    function saveSettings() {
+        try {
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+                labelSize : E.labelSize.value,
+                format    : selectedFormat,
+                currency  : E.currency.value,
+                showName  : E.showName.checked,
+                showPrice : E.showPrice.checked,
+                showCode  : E.showCode.checked,
+            }));
+        } catch (e) { /* localStorage غير متاح — تجاهل بأمان */ }
+    }
+
+    function loadSettings() {
+        var s = null;
+        try { s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); }
+        catch (e) { s = null; }
+        if (!s) return;
+
+        if (s.labelSize && LABEL_PRESETS.some(function (p) { return p.key === s.labelSize; })) {
+            E.labelSize.value = s.labelSize;
+        }
+        if (s.format && FORMAT_HINTS.hasOwnProperty(s.format)) {
+            selectedFormat = s.format;
+            document.querySelectorAll('.fmt-btn').forEach(function (b) {
+                b.classList.toggle('active', b.dataset.fmt === s.format);
+            });
+            E.fmtHint.textContent = FORMAT_HINTS[s.format] || '';
+        }
+        if (typeof s.currency === 'string') E.currency.value = s.currency;
+        if (typeof s.showName  === 'boolean') E.showName.checked  = s.showName;
+        if (typeof s.showPrice === 'boolean') E.showPrice.checked = s.showPrice;
+        if (typeof s.showCode  === 'boolean') E.showCode.checked  = s.showCode;
+    }
+
+    loadSettings();
+    [E.labelSize, E.showName, E.showPrice, E.showCode].forEach(function (el) {
+        el.addEventListener('change', saveSettings);
+    });
+    E.currency.addEventListener('input', saveSettings);
+    document.getElementById('fmtOptions').querySelectorAll('.fmt-btn').forEach(function (btn) {
+        btn.addEventListener('click', saveSettings);
+    });
 
     /* =========================================================
      * التشغيل الأولي

@@ -88,7 +88,7 @@
 <div class="invoice">
     <div class="header">
         <div>
-            <div class="brand-name">{{ app_brand_title | default('Silsal POS') }}</div>
+            <div class="brand-name">{{ app_brand_title | default('النظام المحاسبي الذكي ERP') }}</div>
             <div class="brand-sub">{{ app_subtitle_brand | default('نظام إدارة أعمال ومحاسبة') }}</div>
         </div>
         <div style="text-align:left;">
@@ -106,30 +106,45 @@
             {% if customer.phone %}<div class="sub">{{ customer.phone }}</div>{% endif %}
         </div>
         <div class="info-box">
-            <label>صافي القيمة خلال الفترة</label>
+            <label>صافي قيمة الأصناف خلال الفترة</label>
             <div class="val" style="color:{% if grand_total > 0 %}#dc2626{% elif grand_total < 0 %}#059669{% else %}#1a1a1a{% endif %};">{{ "{:,.2f}".format(grand_total) }}</div>
             <div class="sub">صافي الكمية: {{ "{:,.2f}".format(grand_qty) }}</div>
+        </div>
+    </div>
+    <div class="info-grid" style="margin-top:-8px;">
+        <div class="info-box" style="grid-column:1 / -1;">
+            <label>الرصيد الفعلي لهذه الفترة (يطابق كشف الحساب المالي)</label>
+            <div class="val" style="color:{% if actual_balance_impact > 0 %}#dc2626{% elif actual_balance_impact < 0 %}#059669{% else %}#1a1a1a{% endif %};">{{ "{:,.2f}".format(actual_balance_impact) }}</div>
         </div>
     </div>
 
     <h3>تفاصيل الحركة (صنف بصنف)</h3>
     <table class="t-items">
-        <thead><tr><th>التاريخ</th><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+        <thead><tr><th>التاريخ</th><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th><th>المدفوع (الفاتورة)</th><th>المتبقي (الفاتورة)</th></tr></thead>
         <tbody>
         {% for r in rows %}
         <tr>
             <td>{{ r.date | to_cairo_time('%Y/%m/%d') }}</td>
-            <td>{{ r.product }}<br><span class="ret-tag">{{ r.invoice_number }}{% if r.type == 'return' %} — مرتجع{% endif %}</span></td>
-            <td>{{ "{:,.2f}".format(r.qty) }} {{ r.unit }}</td>
-            <td>{{ "{:,.2f}".format(r.price) }}</td>
+            <td>
+              {% if r.type == 'entry' %}<span style="color:#999;">— حركة مالية يدوية —</span>{% else %}{{ r.product }}{% endif %}
+              <br><span class="ret-tag">{{ r.invoice_number }}{% if r.type == 'return' %} — مرتجع{% elif r.type == 'entry' %}{{ r.type_label }}{% endif %}</span>
+            </td>
+            <td>{% if r.qty is not none %}{{ "{:,.2f}".format(r.qty) }} {{ r.unit }}{% else %}—{% endif %}</td>
+            <td>{% if r.price is not none %}{{ "{:,.2f}".format(r.price) }}{% else %}—{% endif %}</td>
             <td>{{ "{:,.2f}".format(r.total) }}</td>
+            <td>{% if r.invoice_paid is not none %}{{ "{:,.2f}".format(r.invoice_paid) }}{% else %}—{% endif %}</td>
+            <td>
+              {% if r.invoice_remaining is not none %}
+                {% if r.invoice_remaining <= 0.001 %}تم السداد{% else %}{{ "{:,.2f}".format(r.invoice_remaining) }}{% endif %}
+              {% else %}—{% endif %}
+            </td>
         </tr>
         {% else %}
-        <tr><td colspan="5" style="text-align:center;color:#999;">لا توجد حركة في هذه الفترة</td></tr>
+        <tr><td colspan="7" style="text-align:center;color:#999;">لا توجد حركة في هذه الفترة</td></tr>
         {% endfor %}
         </tbody>
         <tfoot>
-            <tr><td colspan="4">الإجمالي</td><td>{{ "{:,.2f}".format(grand_total) }}</td></tr>
+            <tr><td colspan="4">الإجمالي</td><td>{{ "{:,.2f}".format(grand_total) }}</td><td colspan="2"></td></tr>
         </tfoot>
     </table>
 
@@ -150,7 +165,7 @@
     </table>
 
     <div class="footer">
-        <p>{{ app_company | default('') }} — {{ app_brand_title | default('Silsal POS') }}</p>
+        <p>{{ app_company | default('') }} — {{ app_brand_title | default('النظام المحاسبي الذكي ERP') }}</p>
     </div>
 </div>
 <div class="no-print" style="text-align:center;margin-top:20px;">
