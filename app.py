@@ -4,7 +4,7 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date, timedelta, timezone
+from datetime import datetime, date, timedelta, timezone, time as _dtime
 from functools import wraps
 import os
 import json
@@ -179,6 +179,24 @@ def convert_utc_to_cairo(utc_dt, timezone_offset=None):
         # إذا لم يكن هناك timezone information، افترض أنه UTC
         utc_dt = utc_dt.replace(tzinfo=timezone.utc)
     return utc_dt.astimezone(cairo_offset)
+
+
+def local_day_range_to_utc(date_from_str, date_to_str, branch_id=None):
+    """يحوّل بداية/نهاية فترة تاريخ أدخلها المستخدم (بتوقيت القاهرة، زي كل تواريخ الفواتير
+    المعروضة في الواجهة) إلى نطاق UTC مطابق تماماً لبداية أول يوم ونهاية آخر يوم محلياً."""
+    try:
+        gs = get_app_settings_dict(branch_id=branch_id)
+        tz_offset = int(gs.get('timezone_offset', '2'))
+    except Exception:
+        tz_offset = 2
+    cairo_tz = timezone(timedelta(hours=tz_offset))
+    d_from = date.fromisoformat(date_from_str)
+    d_to = date.fromisoformat(date_to_str)
+    local_start = datetime.combine(d_from, _dtime.min).replace(tzinfo=cairo_tz)
+    local_end = datetime.combine(d_to, _dtime.max).replace(tzinfo=cairo_tz)
+    utc_start = local_start.astimezone(timezone.utc).replace(tzinfo=None)
+    utc_end = local_end.astimezone(timezone.utc).replace(tzinfo=None)
+    return utc_start, utc_end
 
 # ── Error logging (يظهر الخطأ كاملاً في السجلات) ──────────
 import logging, traceback as _tb
@@ -936,6 +954,92 @@ def _supplier_open_invoices(supplier_id):
         if actual_remaining > 0.0001:
             result.append({'invoice_number': p.invoice_number, 'actual_remaining': actual_remaining, 'total': p.total})
     return result
+
+
+def _customer_true_balance(customer_id):
+    """الرصيد الحقيقي للعميل محسوباً مباشرة من مصدر الحقيقة."""
+    sales = Sale.query.filter_by(customer_id=customer_id).all()
+    remaining_total = 0.0
+    for s in sales:
+        already_paid = _customer_linked_payments_total(customer_id, s.invoice_number)
+        remaining_total += max(0.0, float(s.remaining or 0) - already_paid)
+    returns_total = db.session.query(db.func.coalesce(db.func.sum(SaleReturn.total), 0.0)).join(
+        Sale, SaleReturn.sale_id == Sale.id
+    ).filter(Sale.customer_id == customer_id).scalar() or 0.0
+    payments = CustomerPayment.query.filter_by(customer_id=customer_id).all()
+    unlinked = _unlinked_payments_in_range(payments, 'customer')
+    entries_total = sum(_customer_payment_balance_impact(p) for p in unlinked)
+    return remaining_total - float(returns_total) + entries_total
+
+
+def _supplier_true_balance(supplier_id):
+    """نفس فكرة _customer_true_balance لكن لرصيد المورد."""
+    purchases = Purchase.query.filter_by(supplier_id=supplier_id).all()
+    remaining_total = 0.0
+    for p in purchases:
+        already_paid = _supplier_linked_payments_total(supplier_id, p.invoice_number)
+        remaining_total += max(0.0, float(p.remaining or 0) - already_paid)
+    returns_total = db.session.query(db.func.coalesce(db.func.sum(PurchaseReturn.total), 0.0)).join(
+        Purchase, PurchaseReturn.purchase_id == Purchase.id
+    ).filter(Purchase.supplier_id == supplier_id).scalar() or 0.0
+    payments = SupplierPayment.query.filter_by(supplier_id=supplier_id).all()
+    unlinked = _unlinked_payments_in_range(payments, 'supplier')
+    entries_total = sum(_supplier_payment_balance_impact(p) for p in unlinked)
+    return remaining_total - float(returns_total) + entries_total
+
+
+def _sync_customer_balance(customer):
+    """يزامن customer.balance المخزَّن مع الرصيد الحقيقي المُعاد احتسابه لو فيه انحراف."""
+    true_balance = _customer_true_balance(customer.id)
+    if abs(float(customer.balance or 0) - true_balance) > 0.01:
+        customer.balance = true_balance
+        db.session.commit()
+    return customer.balance
+
+
+def _sync_supplier_balance(supplier):
+    """نفس فكرة _sync_customer_balance لكن لرصيد المورد."""
+    true_balance = _supplier_true_balance(supplier.id)
+    if abs(float(supplier.balance or 0) - true_balance) > 0.01:
+        supplier.balance = true_balance
+        db.session.commit()
+    return supplier.balance
+
+
+def _unlinked_payments_in_range(payments, kind):
+    """الحركات اليدوية في كشف الحساب التي لا ترتبط برقم فاتورة محدد."""
+    return [p for p in payments if 'مرتبطة بفاتورة' not in (p.notes or '')]
+
+
+def _payment_notes_type_label(notes, kind):
+    """تصنيف نوع الحركة اليدوية من نصّها لعرضه في الكشف التفصيلي. kind = 'customer' أو 'supplier'."""
+    notes = notes or ''
+    if 'إضافة على الحساب' in notes:
+        return 'إضافة على الحساب'
+    if kind == 'customer' and 'رصيد دائن' in notes:
+        return 'رصيد دائن'
+    if kind == 'supplier' and 'تحصيل من المورد' in notes:
+        return 'تحصيل من المورد'
+    if 'مرتبطة بفاتورة' in notes:
+        return 'دفعة على فاتورة'
+    return 'دفعة عامة'
+
+
+def _customer_payment_balance_impact(payment):
+    """أثر حركة كشف حساب العميل هذه على رصيد العميل وقت تسجيلها."""
+    return -float(payment.amount or 0)
+
+
+def _supplier_payment_balance_impact(payment):
+    """أثر حركة كشف حساب المورد هذه على رصيد المورد وقت تسجيلها."""
+    amt = float(payment.amount or 0)
+    notes = payment.notes or ''
+    if amt < 0 or 'إضافة على الحساب' in notes:
+        return amt
+    if 'تحصيل من المورد' in notes:
+        return amt
+    return -amt
+
 
 
 def _format_num(v):
@@ -2323,22 +2427,23 @@ def delete_product(id):
 # ===== BARCODE LABEL PRINTING (طباعة ملصقات باركود) =====
 
 BARCODE_LABEL_SIZE_PRESETS = {
-    '40x30':   {'label': '40×30 مم (عامة)',              'w_mm': 40,   'h_mm': 30,   'cols': 5},
-    '50x30':   {'label': '50×30 مم (عامة)',              'w_mm': 50,   'h_mm': 30,   'cols': 4},
-    '38x25':   {'label': '38×25 مم (حرارية ضيقة)',       'w_mm': 38,   'h_mm': 25,   'cols': 5},
-    '57x32':   {'label': '57×32 مم (حرارية قياسية)',     'w_mm': 57,   'h_mm': 32,   'cols': 3},
-    '80x50':   {'label': '80×50 مم (حرارية كبيرة)',      'w_mm': 80,   'h_mm': 50,   'cols': 2},
-    '60x40':   {'label': '60×40 مم',                     'w_mm': 60,   'h_mm': 40,   'cols': 3},
-    '100x50':  {'label': '100×50 مم (شحن/لوجستيات)',    'w_mm': 100,  'h_mm': 50,   'cols': 2},
-    'a4-3col': {'label': 'A4 — 3 أعمدة (63.5×38.1 مم)', 'w_mm': 63.5, 'h_mm': 38.1, 'cols': 3},
-    'a4-4col': {'label': 'A4 — 4 أعمدة (48×25 مم)',     'w_mm': 48,   'h_mm': 25,   'cols': 4},
+    '40x30':   {'label': '40×30 مم (عامة)',              'w_mm': 40,   'h_mm': 30,   'cols': 5,  'sheet': False},
+    '50x30':   {'label': '50×30 مم (عامة)',              'w_mm': 50,   'h_mm': 30,   'cols': 4,  'sheet': False},
+    '38x25':   {'label': '38×25 مم (حرارية ضيقة)',       'w_mm': 38,   'h_mm': 25,   'cols': 5,  'sheet': False},
+    '35x25':   {'label': '35×25 مم (مطابق Xprinter XP-235B)', 'w_mm': 35, 'h_mm': 25, 'cols': 5, 'sheet': False},
+    '57x32':   {'label': '57×32 مم (حرارية قياسية)',     'w_mm': 57,   'h_mm': 32,   'cols': 3,  'sheet': False},
+    '80x50':   {'label': '80×50 مم (حرارية كبيرة)',      'w_mm': 80,   'h_mm': 50,   'cols': 2,  'sheet': False},
+    '60x40':   {'label': '60×40 مم',                     'w_mm': 60,   'h_mm': 40,   'cols': 3,  'sheet': False},
+    '100x50':  {'label': '100×50 مم (شحن/لوجستيات)',    'w_mm': 100,  'h_mm': 50,   'cols': 2,  'sheet': False},
+    'a4-3col': {'label': 'A4 — 3 أعمدة (63.5×38.1 مم)', 'w_mm': 63.5, 'h_mm': 38.1, 'cols': 3,  'sheet': True},
+    'a4-4col': {'label': 'A4 — 4 أعمدة (48×25 مم)',     'w_mm': 48,   'h_mm': 25,   'cols': 4,  'sheet': True},
 }
 
 # الصيغ المسموح بها
 ALLOWED_BARCODE_FORMATS = {'AUTO', 'CODE128', 'EAN13', 'EAN8', 'UPC', 'UPCE', 'CODE39'}
 
 # رمز العملة الافتراضي (يمكن تعديله من الإعدادات العامة)
-DEFAULT_CURRENCY = 'ريال'
+DEFAULT_CURRENCY = 'جنية'
 
 
 def _detect_barcode_format(code: str) -> str:
@@ -2371,9 +2476,9 @@ def _calc_label_fonts(preset: dict, show_name: bool, show_price: bool, show_code
         return round(base * scale, 1)
 
     return {
-        'name_font'     : s(8.5)  if show_name  else 0,
-        'bnum_font'     : s(7.0),   # رقم الباركود (دائماً)
-        'code_font'     : s(7.0)  if show_code  else 0,
+        'name_font'     : s(12.0) if show_name  else 0,   # اسم الصنف
+        'bnum_font'     : s(9.5),   # رقم الباركود (دائماً)
+        'code_font'     : s(11.0) if show_code  else 0,   # كود الصنف
         'price_font'    : s(9.5)  if show_price else 0,
         'currency_font' : s(7.0)  if show_price else 0,
     }
@@ -2458,7 +2563,7 @@ def barcode_labels_print():
 
     preset    = BARCODE_LABEL_SIZE_PRESETS[size_key]
     fonts     = _calc_label_fonts(preset, show_name, show_price, show_code)
-    is_sheet  = preset['cols'] > 1
+    is_sheet  = bool(preset.get('sheet', preset['cols'] > 1))
 
     return render_template(
         'barcode_labels_print.html',
@@ -2652,6 +2757,9 @@ def edit_customer(id):
 @login_required
 def customer_statement(id):
     customer = Customer.query.get_or_404(id)
+    # مزامنة الرصيد المخزَّن مع الرصيد الحقيقي المُعاد احتسابه من الفواتير/المرتجعات/الحركات —
+    # عشان «الرصيد الحالي» ما يفضلش منحرفاً عن كشف الحساب التفصيلي بسبب أي خلل قديم متراكم.
+    _sync_customer_balance(customer)
     sales = Sale.query.filter_by(customer_id=id).order_by(Sale.date.desc()).all()
     payments = CustomerPayment.query.filter_by(customer_id=id).order_by(CustomerPayment.date.desc()).all()
     returns = SaleReturn.query.join(Sale).filter(Sale.customer_id == id).all()
@@ -2665,27 +2773,43 @@ def customer_statement_detailed(id):
     customer = Customer.query.get_or_404(id)
     date_from = request.args.get('date_from', date.today().replace(day=1).isoformat())
     date_to = request.args.get('date_to', date.today().isoformat())
+    # الفلترة تتم بحدود UTC مطابقة لليوم المحلي (القاهرة) وليس بالتاريخ الخام المخزَّن —
+    # وإلا كانت تُسقط حركات حصلت فعلياً داخل الفترة (بتوقيت القاهرة) فيختلف الرصيد عن المالي.
+    utc_from, utc_to = local_day_range_to_utc(date_from, date_to, branch_id=getattr(current_user, 'branch_id', None))
 
     sale_rows = db.session.query(SaleItem, Sale).join(Sale, SaleItem.sale_id == Sale.id).filter(
         Sale.customer_id == id,
-        db.func.date(Sale.date).between(date_from, date_to)
+        Sale.date.between(utc_from, utc_to)
     ).order_by(Sale.date.asc()).all()
 
     return_rows = db.session.query(SaleReturnItem, SaleReturn, Sale).join(
         SaleReturn, SaleReturnItem.return_id == SaleReturn.id
     ).join(Sale, SaleReturn.sale_id == Sale.id).filter(
         Sale.customer_id == id,
-        db.func.date(SaleReturn.date).between(date_from, date_to)
+        SaleReturn.date.between(utc_from, utc_to)
     ).order_by(SaleReturn.date.asc()).all()
+
+    # حالة كل فاتورة بيع ظاهرة في الفترة (المدفوع/المتبقي الفعليين، بعد خصم أي دفعات كشف حساب
+    # مرتبطة بها لاحقاً) — تُحسب مرة واحدة لكل فاتورة وتُعرض على كل أصنافها في الجدول.
+    sale_ids_in_range = {sale.id for _, sale in sale_rows}
+    invoice_status = {}
+    for sid in sale_ids_in_range:
+        sale = db.session.get(Sale, sid)
+        already_paid = _customer_linked_payments_total(id, sale.invoice_number)
+        actual_remaining = max(0.0, float(sale.remaining or 0) - already_paid)
+        actual_paid = max(0.0, float(sale.total or 0) - actual_remaining)
+        invoice_status[sid] = {'paid': actual_paid, 'remaining': actual_remaining, 'total': float(sale.total or 0)}
 
     rows = []
     for si, sale in sale_rows:
+        st = invoice_status[sale.id]
         rows.append({
             'date': sale.date, 'invoice_number': sale.invoice_number, 'sale_id': sale.id,
             'type': 'sale', 'type_label': 'بيع',
             'product': si.product.name if si.product else '—',
             'unit': si.product.unit if si.product else '',
             'qty': si.quantity or 0, 'price': si.price or 0, 'total': si.total or 0,
+            'invoice_paid': st['paid'], 'invoice_remaining': st['remaining'],
         })
     for ri, ret, sale in return_rows:
         rows.append({
@@ -2694,11 +2818,31 @@ def customer_statement_detailed(id):
             'product': ri.product.name if ri.product else '—',
             'unit': ri.product.unit if ri.product else '',
             'qty': ri.quantity or 0, 'price': ri.price or 0, 'total': -(ri.total or 0),
+            'invoice_paid': None, 'invoice_remaining': None,
         })
+
+    # حركات كشف الحساب اليدوية (تحصيل/دفعة/رصيد دائن/إضافة على الحساب) في نفس الفترة التي لا
+    # ترتبط بفاتورة محددة — بدونها كان صافي القيمة يتجاهلها تماماً فيختلف عن رصيد كشف الحساب المالي.
+    manual_payments = CustomerPayment.query.filter(
+        CustomerPayment.customer_id == id,
+        CustomerPayment.date.between(utc_from, utc_to)
+    ).order_by(CustomerPayment.date.asc()).all()
+    unlinked_payments = _unlinked_payments_in_range(manual_payments, 'customer')
+    for p in unlinked_payments:
+        rows.append({
+            'date': p.date, 'invoice_number': None, 'sale_id': None,
+            'type': 'entry', 'type_label': _payment_notes_type_label(p.notes, 'customer'),
+            'product': None, 'unit': '', 'qty': None, 'price': None,
+            'total': _customer_payment_balance_impact(p),
+            'invoice_paid': None, 'invoice_remaining': None,
+        })
+
     rows.sort(key=lambda r: r['date'])
 
     products_summary = defaultdict(lambda: {'qty': 0.0, 'total': 0.0, 'unit': ''})
     for r in rows:
+        if r['type'] not in ('sale', 'return'):
+            continue
         agg = products_summary[r['product']]
         agg['unit'] = r['unit']
         if r['type'] == 'sale':
@@ -2708,12 +2852,20 @@ def customer_statement_detailed(id):
         agg['total'] += r['total']
     products_summary = dict(sorted(products_summary.items(), key=lambda kv: -kv[1]['total']))
 
-    grand_total = sum(r['total'] for r in rows)
-    grand_qty = sum(r['qty'] if r['type'] == 'sale' else -r['qty'] for r in rows)
+    grand_total = sum(r['total'] for r in rows if r['type'] in ('sale', 'return'))
+    grand_qty = sum(r['qty'] if r['type'] == 'sale' else -r['qty'] for r in rows if r['type'] in ('sale', 'return'))
+    # الرصيد الفعلي للفترة: نفس الأثر الذي انعكس على رصيد العميل الإجمالي خلال هذه الفترة —
+    # متبقي فواتير البيع الفعلي (بعد الدفعات) + صافي المرتجعات + صافي الحركات اليدوية غير المرتبطة بفاتورة.
+    actual_balance_impact = (
+        sum(st['remaining'] for st in invoice_status.values())
+        + sum(r['total'] for r in rows if r['type'] == 'return')
+        + sum(r['total'] for r in rows if r['type'] == 'entry')
+    )
 
     return render_template(
         'customer_statement_detailed.html', customer=customer, rows=rows,
         products_summary=products_summary, grand_total=grand_total, grand_qty=grand_qty,
+        actual_balance_impact=actual_balance_impact,
         date_from=date_from, date_to=date_to)
 
 @app.route('/customers/<int:id>/statement/detailed/print')
@@ -2722,27 +2874,41 @@ def customer_statement_detailed_print(id):
     customer = Customer.query.get_or_404(id)
     date_from = request.args.get('date_from', date.today().replace(day=1).isoformat())
     date_to = request.args.get('date_to', date.today().isoformat())
+    utc_from, utc_to = local_day_range_to_utc(date_from, date_to, branch_id=getattr(current_user, 'branch_id', None))
 
     sale_rows = db.session.query(SaleItem, Sale).join(Sale, SaleItem.sale_id == Sale.id).filter(
         Sale.customer_id == id,
-        db.func.date(Sale.date).between(date_from, date_to)
+        Sale.date.between(utc_from, utc_to)
     ).order_by(Sale.date.asc()).all()
 
     return_rows = db.session.query(SaleReturnItem, SaleReturn, Sale).join(
         SaleReturn, SaleReturnItem.return_id == SaleReturn.id
     ).join(Sale, SaleReturn.sale_id == Sale.id).filter(
         Sale.customer_id == id,
-        db.func.date(SaleReturn.date).between(date_from, date_to)
+        SaleReturn.date.between(utc_from, utc_to)
     ).order_by(SaleReturn.date.asc()).all()
+
+    # حالة كل فاتورة بيع ظاهرة في الفترة (المدفوع/المتبقي الفعليين) — نفس منطق صفحة العرض،
+    # عشان نسخة الطباعة تطابق كشف الحساب المالي بدل ما تفضل تعرض صافي قيمة البضاعة فقط.
+    sale_ids_in_range = {sale.id for _, sale in sale_rows}
+    invoice_status = {}
+    for sid in sale_ids_in_range:
+        sale = db.session.get(Sale, sid)
+        already_paid = _customer_linked_payments_total(id, sale.invoice_number)
+        actual_remaining = max(0.0, float(sale.remaining or 0) - already_paid)
+        actual_paid = max(0.0, float(sale.total or 0) - actual_remaining)
+        invoice_status[sid] = {'paid': actual_paid, 'remaining': actual_remaining, 'total': float(sale.total or 0)}
 
     rows = []
     for si, sale in sale_rows:
+        st = invoice_status[sale.id]
         rows.append({
             'date': sale.date, 'invoice_number': sale.invoice_number,
             'type': 'sale', 'type_label': 'بيع',
             'product': si.product.name if si.product else '—',
             'unit': si.product.unit if si.product else '',
             'qty': si.quantity or 0, 'price': si.price or 0, 'total': si.total or 0,
+            'invoice_paid': st['paid'], 'invoice_remaining': st['remaining'],
         })
     for ri, ret, sale in return_rows:
         rows.append({
@@ -2751,11 +2917,29 @@ def customer_statement_detailed_print(id):
             'product': ri.product.name if ri.product else '—',
             'unit': ri.product.unit if ri.product else '',
             'qty': ri.quantity or 0, 'price': ri.price or 0, 'total': -(ri.total or 0),
+            'invoice_paid': None, 'invoice_remaining': None,
         })
+
+    manual_payments = CustomerPayment.query.filter(
+        CustomerPayment.customer_id == id,
+        CustomerPayment.date.between(utc_from, utc_to)
+    ).order_by(CustomerPayment.date.asc()).all()
+    unlinked_payments = _unlinked_payments_in_range(manual_payments, 'customer')
+    for p in unlinked_payments:
+        rows.append({
+            'date': p.date, 'invoice_number': None,
+            'type': 'entry', 'type_label': _payment_notes_type_label(p.notes, 'customer'),
+            'product': None, 'unit': '', 'qty': None, 'price': None,
+            'total': _customer_payment_balance_impact(p),
+            'invoice_paid': None, 'invoice_remaining': None,
+        })
+
     rows.sort(key=lambda r: r['date'])
 
     products_summary = defaultdict(lambda: {'qty': 0.0, 'total': 0.0, 'unit': ''})
     for r in rows:
+        if r['type'] not in ('sale', 'return'):
+            continue
         agg = products_summary[r['product']]
         agg['unit'] = r['unit']
         if r['type'] == 'sale':
@@ -2765,8 +2949,15 @@ def customer_statement_detailed_print(id):
         agg['total'] += r['total']
     products_summary = dict(sorted(products_summary.items(), key=lambda kv: -kv[1]['total']))
 
-    grand_total = sum(r['total'] for r in rows)
-    grand_qty = sum(r['qty'] if r['type'] == 'sale' else -r['qty'] for r in rows)
+    grand_total = sum(r['total'] for r in rows if r['type'] in ('sale', 'return'))
+    grand_qty = sum(r['qty'] if r['type'] == 'sale' else -r['qty'] for r in rows if r['type'] in ('sale', 'return'))
+    # الرصيد الفعلي للفترة: نفس رقم رصيد كشف الحساب المالي — متبقي فواتير البيع الفعلي (بعد
+    # الدفعات) + صافي المرتجعات + صافي الحركات اليدوية غير المرتبطة بفاتورة.
+    actual_balance_impact = (
+        sum(st['remaining'] for st in invoice_status.values())
+        + sum(r['total'] for r in rows if r['type'] == 'return')
+        + sum(r['total'] for r in rows if r['type'] == 'entry')
+    )
 
     gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
     copies_raw = gs.get('print_auto_copies') or '1'
@@ -2779,6 +2970,7 @@ def customer_statement_detailed_print(id):
         'customer_statement_detailed_print.html',
         customer=customer, rows=rows, products_summary=products_summary,
         grand_total=grand_total, grand_qty=grand_qty,
+        actual_balance_impact=actual_balance_impact,
         date_from=date_from, date_to=date_to,
         print_mode=(gs.get('print_mode') or 'normal'),
         print_paper_size=(gs.get('print_paper_size') or 'A4'),
@@ -2791,6 +2983,7 @@ def customer_statement_detailed_print(id):
 @login_required
 def customer_statement_print(id):
     customer = Customer.query.get_or_404(id)
+    _sync_customer_balance(customer)
     sales = Sale.query.filter_by(customer_id=id).order_by(Sale.date.desc()).all()
     payments = CustomerPayment.query.filter_by(customer_id=id).order_by(CustomerPayment.date.desc()).all()
     gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
@@ -5922,6 +6115,8 @@ def inventory_memo_delete(id):
 @login_required
 def supplier_statement(id):
     supplier = Supplier.query.get_or_404(id)
+    # مزامنة الرصيد المخزَّن مع الرصيد الحقيقي — نفس فكرة customer_statement.
+    _sync_supplier_balance(supplier)
     purchases = Purchase.query.filter_by(supplier_id=id).order_by(Purchase.date.desc()).all()
     payments = SupplierPayment.query.filter_by(supplier_id=id).order_by(SupplierPayment.date.desc()).all()
     open_invoices = _supplier_open_invoices(id)
@@ -5933,27 +6128,41 @@ def supplier_statement_detailed(id):
     supplier = Supplier.query.get_or_404(id)
     date_from = request.args.get('date_from', date.today().replace(day=1).isoformat())
     date_to = request.args.get('date_to', date.today().isoformat())
+    utc_from, utc_to = local_day_range_to_utc(date_from, date_to, branch_id=getattr(current_user, 'branch_id', None))
 
     purchase_rows = db.session.query(PurchaseItem, Purchase).join(Purchase, PurchaseItem.purchase_id == Purchase.id).filter(
         Purchase.supplier_id == id,
-        db.func.date(Purchase.date).between(date_from, date_to)
+        Purchase.date.between(utc_from, utc_to)
     ).order_by(Purchase.date.asc()).all()
 
     return_rows = db.session.query(PurchaseReturnItem, PurchaseReturn, Purchase).join(
         PurchaseReturn, PurchaseReturnItem.return_id == PurchaseReturn.id
     ).join(Purchase, PurchaseReturn.purchase_id == Purchase.id).filter(
         Purchase.supplier_id == id,
-        db.func.date(PurchaseReturn.date).between(date_from, date_to)
+        PurchaseReturn.date.between(utc_from, utc_to)
     ).order_by(PurchaseReturn.date.asc()).all()
+
+    # حالة كل فاتورة شراء ظاهرة في الفترة (المدفوع/المتبقي الفعليين، بعد خصم أي دفعات كشف حساب
+    # مرتبطة بها لاحقاً) — تُحسب مرة واحدة لكل فاتورة وتُعرض على كل أصنافها في الجدول.
+    purchase_ids_in_range = {purchase.id for _, purchase in purchase_rows}
+    invoice_status = {}
+    for pid in purchase_ids_in_range:
+        purchase = db.session.get(Purchase, pid)
+        already_paid = _supplier_linked_payments_total(id, purchase.invoice_number)
+        actual_remaining = max(0.0, float(purchase.remaining or 0) - already_paid)
+        actual_paid = max(0.0, float(purchase.total or 0) - actual_remaining)
+        invoice_status[pid] = {'paid': actual_paid, 'remaining': actual_remaining, 'total': float(purchase.total or 0)}
 
     rows = []
     for pi, purchase in purchase_rows:
+        st = invoice_status[purchase.id]
         rows.append({
             'date': purchase.date, 'invoice_number': purchase.invoice_number, 'purchase_id': purchase.id,
             'type': 'purchase', 'type_label': 'شراء',
             'product': pi.product.name if pi.product else '—',
             'unit': pi.product.unit if pi.product else '',
             'qty': pi.quantity or 0, 'price': pi.price or 0, 'total': pi.total or 0,
+            'invoice_paid': st['paid'], 'invoice_remaining': st['remaining'],
         })
     for ri, ret, purchase in return_rows:
         rows.append({
@@ -5962,11 +6171,31 @@ def supplier_statement_detailed(id):
             'product': ri.product.name if ri.product else '—',
             'unit': ri.product.unit if ri.product else '',
             'qty': ri.quantity or 0, 'price': ri.price or 0, 'total': -(ri.total or 0),
+            'invoice_paid': None, 'invoice_remaining': None,
         })
+
+    # حركات كشف الحساب اليدوية (تحصيل/دفعة/إضافة على الحساب) في نفس الفترة التي لا ترتبط
+    # بفاتورة محددة — بدونها كان صافي القيمة يتجاهلها تماماً فيختلف عن رصيد كشف الحساب المالي.
+    manual_payments = SupplierPayment.query.filter(
+        SupplierPayment.supplier_id == id,
+        SupplierPayment.date.between(utc_from, utc_to)
+    ).order_by(SupplierPayment.date.asc()).all()
+    unlinked_payments = _unlinked_payments_in_range(manual_payments, 'supplier')
+    for p in unlinked_payments:
+        rows.append({
+            'date': p.date, 'invoice_number': None, 'purchase_id': None,
+            'type': 'entry', 'type_label': _payment_notes_type_label(p.notes, 'supplier'),
+            'product': None, 'unit': '', 'qty': None, 'price': None,
+            'total': _supplier_payment_balance_impact(p),
+            'invoice_paid': None, 'invoice_remaining': None,
+        })
+
     rows.sort(key=lambda r: r['date'])
 
     products_summary = defaultdict(lambda: {'qty': 0.0, 'total': 0.0, 'unit': ''})
     for r in rows:
+        if r['type'] not in ('purchase', 'return'):
+            continue
         agg = products_summary[r['product']]
         agg['unit'] = r['unit']
         if r['type'] == 'purchase':
@@ -5976,12 +6205,20 @@ def supplier_statement_detailed(id):
         agg['total'] += r['total']
     products_summary = dict(sorted(products_summary.items(), key=lambda kv: -kv[1]['total']))
 
-    grand_total = sum(r['total'] for r in rows)
-    grand_qty = sum(r['qty'] if r['type'] == 'purchase' else -r['qty'] for r in rows)
+    grand_total = sum(r['total'] for r in rows if r['type'] in ('purchase', 'return'))
+    grand_qty = sum(r['qty'] if r['type'] == 'purchase' else -r['qty'] for r in rows if r['type'] in ('purchase', 'return'))
+    # الرصيد الفعلي للفترة: نفس الأثر الذي انعكس على رصيد المورد الإجمالي خلال هذه الفترة —
+    # متبقي فواتير الشراء الفعلي (بعد الدفعات) + صافي المرتجعات + صافي الحركات اليدوية غير المرتبطة بفاتورة.
+    actual_balance_impact = (
+        sum(st['remaining'] for st in invoice_status.values())
+        + sum(r['total'] for r in rows if r['type'] == 'return')
+        + sum(r['total'] for r in rows if r['type'] == 'entry')
+    )
 
     return render_template(
         'supplier_statement_detailed.html', supplier=supplier, rows=rows,
         products_summary=products_summary, grand_total=grand_total, grand_qty=grand_qty,
+        actual_balance_impact=actual_balance_impact,
         date_from=date_from, date_to=date_to)
 
 @app.route('/suppliers/<int:id>/statement/detailed/print')
@@ -5990,27 +6227,41 @@ def supplier_statement_detailed_print(id):
     supplier = Supplier.query.get_or_404(id)
     date_from = request.args.get('date_from', date.today().replace(day=1).isoformat())
     date_to = request.args.get('date_to', date.today().isoformat())
+    utc_from, utc_to = local_day_range_to_utc(date_from, date_to, branch_id=getattr(current_user, 'branch_id', None))
 
     purchase_rows = db.session.query(PurchaseItem, Purchase).join(Purchase, PurchaseItem.purchase_id == Purchase.id).filter(
         Purchase.supplier_id == id,
-        db.func.date(Purchase.date).between(date_from, date_to)
+        Purchase.date.between(utc_from, utc_to)
     ).order_by(Purchase.date.asc()).all()
 
     return_rows = db.session.query(PurchaseReturnItem, PurchaseReturn, Purchase).join(
         PurchaseReturn, PurchaseReturnItem.return_id == PurchaseReturn.id
     ).join(Purchase, PurchaseReturn.purchase_id == Purchase.id).filter(
         Purchase.supplier_id == id,
-        db.func.date(PurchaseReturn.date).between(date_from, date_to)
+        PurchaseReturn.date.between(utc_from, utc_to)
     ).order_by(PurchaseReturn.date.asc()).all()
+
+    # حالة كل فاتورة شراء ظاهرة في الفترة (المدفوع/المتبقي الفعليين) — نفس منطق صفحة العرض،
+    # عشان نسخة الطباعة تطابق كشف الحساب المالي بدل ما تفضل تعرض صافي قيمة البضاعة فقط.
+    purchase_ids_in_range = {purchase.id for _, purchase in purchase_rows}
+    invoice_status = {}
+    for pid in purchase_ids_in_range:
+        purchase = db.session.get(Purchase, pid)
+        already_paid = _supplier_linked_payments_total(id, purchase.invoice_number)
+        actual_remaining = max(0.0, float(purchase.remaining or 0) - already_paid)
+        actual_paid = max(0.0, float(purchase.total or 0) - actual_remaining)
+        invoice_status[pid] = {'paid': actual_paid, 'remaining': actual_remaining, 'total': float(purchase.total or 0)}
 
     rows = []
     for pi, purchase in purchase_rows:
+        st = invoice_status[purchase.id]
         rows.append({
             'date': purchase.date, 'invoice_number': purchase.invoice_number,
             'type': 'purchase', 'type_label': 'شراء',
             'product': pi.product.name if pi.product else '—',
             'unit': pi.product.unit if pi.product else '',
             'qty': pi.quantity or 0, 'price': pi.price or 0, 'total': pi.total or 0,
+            'invoice_paid': st['paid'], 'invoice_remaining': st['remaining'],
         })
     for ri, ret, purchase in return_rows:
         rows.append({
@@ -6019,11 +6270,29 @@ def supplier_statement_detailed_print(id):
             'product': ri.product.name if ri.product else '—',
             'unit': ri.product.unit if ri.product else '',
             'qty': ri.quantity or 0, 'price': ri.price or 0, 'total': -(ri.total or 0),
+            'invoice_paid': None, 'invoice_remaining': None,
         })
+
+    manual_payments = SupplierPayment.query.filter(
+        SupplierPayment.supplier_id == id,
+        SupplierPayment.date.between(utc_from, utc_to)
+    ).order_by(SupplierPayment.date.asc()).all()
+    unlinked_payments = _unlinked_payments_in_range(manual_payments, 'supplier')
+    for p in unlinked_payments:
+        rows.append({
+            'date': p.date, 'invoice_number': None,
+            'type': 'entry', 'type_label': _payment_notes_type_label(p.notes, 'supplier'),
+            'product': None, 'unit': '', 'qty': None, 'price': None,
+            'total': _supplier_payment_balance_impact(p),
+            'invoice_paid': None, 'invoice_remaining': None,
+        })
+
     rows.sort(key=lambda r: r['date'])
 
     products_summary = defaultdict(lambda: {'qty': 0.0, 'total': 0.0, 'unit': ''})
     for r in rows:
+        if r['type'] not in ('purchase', 'return'):
+            continue
         agg = products_summary[r['product']]
         agg['unit'] = r['unit']
         if r['type'] == 'purchase':
@@ -6033,8 +6302,15 @@ def supplier_statement_detailed_print(id):
         agg['total'] += r['total']
     products_summary = dict(sorted(products_summary.items(), key=lambda kv: -kv[1]['total']))
 
-    grand_total = sum(r['total'] for r in rows)
-    grand_qty = sum(r['qty'] if r['type'] == 'purchase' else -r['qty'] for r in rows)
+    grand_total = sum(r['total'] for r in rows if r['type'] in ('purchase', 'return'))
+    grand_qty = sum(r['qty'] if r['type'] == 'purchase' else -r['qty'] for r in rows if r['type'] in ('purchase', 'return'))
+    # الرصيد الفعلي للفترة: نفس رقم رصيد كشف الحساب المالي — متبقي فواتير الشراء الفعلي (بعد
+    # الدفعات) + صافي المرتجعات + صافي الحركات اليدوية غير المرتبطة بفاتورة.
+    actual_balance_impact = (
+        sum(st['remaining'] for st in invoice_status.values())
+        + sum(r['total'] for r in rows if r['type'] == 'return')
+        + sum(r['total'] for r in rows if r['type'] == 'entry')
+    )
 
     gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
     copies_raw = gs.get('print_auto_copies') or '1'
@@ -6047,6 +6323,7 @@ def supplier_statement_detailed_print(id):
         'supplier_statement_detailed_print.html',
         supplier=supplier, rows=rows, products_summary=products_summary,
         grand_total=grand_total, grand_qty=grand_qty,
+        actual_balance_impact=actual_balance_impact,
         date_from=date_from, date_to=date_to,
         print_mode=(gs.get('print_mode') or 'normal'),
         print_paper_size=(gs.get('print_paper_size') or 'A4'),
@@ -6059,6 +6336,7 @@ def supplier_statement_detailed_print(id):
 @login_required
 def supplier_statement_print(id):
     supplier = Supplier.query.get_or_404(id)
+    _sync_supplier_balance(supplier)
     purchases = Purchase.query.filter_by(supplier_id=id).order_by(Purchase.date.desc()).all()
     payments = SupplierPayment.query.filter_by(supplier_id=id).order_by(SupplierPayment.date.desc()).all()
     gs = get_app_settings_dict(branch_id=getattr(current_user, 'branch_id', None))
